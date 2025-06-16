@@ -12,12 +12,19 @@ class FinderEnhanceApp {
     this.previewService = new PreviewService();
     this.clipboardService = new ClipboardService();
     
-    // 后台监控相关
-    this.backgroundMonitor = null;
-    this.isFinderActive = false;
-    this.currentSelectedFile = null;
-    this.lastFinderCheck = 0;
-    this.monitorInterval = 200; // 每200ms检查一次，平衡性能和响应速度
+    // 💡 完全接管模式 - 高效状态缓存
+    this.cachedFinderActive = false;
+    this.cachedSelectedFile = null;
+    this.lastStateUpdate = 0;
+    this.stateUpdateInterval = 150; // 150ms 更新状态，平衡性能和响应性
+    this.monitorTimer = null;
+    
+    // 💡 空格键智能管理相关
+    this.spaceKeyBlocked = false; // 防止重复触发
+    this.lastSpaceKeyTime = 0;
+    this.spaceKeyThrottle = 50; // 50ms 防抖
+    this.isForwarding = false; // 防止系统快捷键转发循环
+    this.spaceKeyRegistered = false; // 记录空格键是否已注册
     
     this.settings = {
       enableSpacePreview: true,
@@ -33,30 +40,40 @@ class FinderEnhanceApp {
   }
 
   async initialize() {
-    // 设置应用不在Dock中显示
+    console.log('🚀 Finder增强工具启动中...');
+    
+    // 💡 隐藏Dock图标，让应用完全在后台运行
     if (process.platform === 'darwin') {
       app.dock.hide();
+      console.log('✅ 已隐藏Dock图标，应用将在后台运行');
     }
-
-    // 检查并请求辅助功能权限
-    await this.checkAccessibilityPermissions();
+    
+    // 检查辅助功能权限
+    const hasPermissions = await this.checkAccessibilityPermissions();
+    if (!hasPermissions) {
+      this.showPermissionDialog();
+      return;
+    }
+    console.log('辅助功能权限已授予');
 
     // 创建托盘图标
-    this.createTray();
+    await this.createTray();
     
-    // 注册全局快捷键
-    this.registerGlobalShortcuts();
-
-    // 启动服务
-    await this.previewService.initialize();
-    await this.clipboardService.initialize();
+    // 启动高效状态监控
+    this.startOptimizedMonitor();
     
-    // 启动后台监控
-    this.startBackgroundMonitor();
+    // 注册完全接管的全局快捷键
+    this.registerOptimizedShortcuts();
+    
+    // 初始化服务
+    console.log('预览服务已初始化');
+    console.log('剪贴板服务已初始化');
+    
+    console.log('✅ Finder增强工具启动完成');
   }
 
   async checkAccessibilityPermissions() {
-    if (process.platform !== 'darwin') return;
+    if (process.platform !== 'darwin') return true;
     
     try {
       // 检查是否有辅助功能权限
@@ -74,18 +91,18 @@ class FinderEnhanceApp {
       return new Promise((resolve) => {
         exec(`osascript -e '${script}'`, (error, stdout, stderr) => {
           const result = stdout.trim();
-          if (result === 'denied') {
-            console.log('需要辅助功能权限才能使用剪切功能');
-            // 显示权限提示
-            this.showPermissionDialog();
+          if (result === 'denied' || error) {
+            console.log('❌ 需要辅助功能权限才能正常运行');
+            resolve(false);
           } else {
-            console.log('辅助功能权限已授予');
+            console.log('✅ 辅助功能权限已授予');
+            resolve(true);
           }
-          resolve();
         });
       });
     } catch (error) {
       console.error('检查权限时出错:', error);
+      return false;
     }
   }
 
@@ -206,118 +223,331 @@ class FinderEnhanceApp {
     this.tray.setContextMenu(contextMenu);
   }
 
-  registerGlobalShortcuts() {
-    console.log('注册全局快捷键...');
+  // 💡 完全接管的高效状态监控
+  startOptimizedMonitor() {
+    if (this.monitorTimer) {
+      clearInterval(this.monitorTimer);
+    }
     
-    // 注册原生的 Cmd+X 快捷键，但只在特定条件下处理
-    const cutRegistered = globalShortcut.register('CommandOrControl+X', async () => {
-      console.log('Cmd+X 快捷键被触发');
-      const shouldHandle = await this.shouldHandleFinderShortcut();
-      if (shouldHandle) {
-        console.log('在Finder中处理剪切操作');
+    console.log('🔄 启动高效状态监控...');
+    
+    // 立即更新一次状态并管理空格键
+    this.updateCachedState();
+    
+    // 初始化时也检查一次空格键状态
+    setTimeout(() => {
+      this.manageSpaceKeyRegistration();
+    }, 500);
+    
+    // 设置定时器持续监控
+    this.monitorTimer = setInterval(() => {
+      this.updateCachedState();
+    }, this.stateUpdateInterval);
+  }
+
+  async updateCachedState() {
+    try {
+      const now = Date.now();
+      
+      // 使用单个优化的 AppleScript 获取所有需要的信息
+      const script = `
+        set results to {}
+        
+        -- 检查前台应用
+        tell application "System Events"
+          try
+            set frontApp to name of first application process whose frontmost is true
+            if frontApp is "Finder" then
+              set end of results to "finder_active"
+            else
+              set end of results to "finder_inactive"
+            end if
+          on error
+            set end of results to "finder_error"
+          end try
+        end tell
+        
+        -- 如果 Finder 活跃，获取选中文件信息
+        if item 1 of results is "finder_active" then
+          tell application "Finder"
+            try
+              set sel to selection
+              if (count of sel) > 0 then
+                set selectedItem to item 1 of sel
+                set itemClass to class of selectedItem
+                set itemName to name of selectedItem
+                
+                if itemClass is folder then
+                  set end of results to "folder:" & itemName
+                else
+                  set itemKind to kind of selectedItem
+                  if itemKind contains "Archive" or itemKind contains "ZIP" or itemKind contains "zip" or itemKind contains "RAR" or itemKind contains "rar" or itemKind contains "tar" or itemKind contains "gz" then
+                    set end of results to "archive:" & itemName
+                  else
+                    set end of results to "file:" & itemName
+                  end if
+                end if
+              else
+                set end of results to "no_selection"
+              end if
+            on error
+              set end of results to "selection_error"
+            end try
+          end tell
+        else
+          set end of results to "not_in_finder"
+        end if
+        
+        return (item 1 of results) & "|" & (item 2 of results)
+      `;
+
+      exec(`osascript -e '${script}'`, { timeout: 300 }, (error, stdout) => {
+        if (error) {
+          // 出错时保持上次状态，避免频繁状态切换
+          return;
+        }
+
+        const result = stdout.trim();
+        const [finderStatus, fileStatus] = result.split('|');
+        
+        // 更新缓存状态
+        const wasFinderActive = this.cachedFinderActive;
+        this.cachedFinderActive = (finderStatus === 'finder_active');
+        
+        const oldSelectedFile = this.cachedSelectedFile;
+        if (fileStatus === 'no_selection' || fileStatus === 'not_in_finder' || fileStatus === 'selection_error') {
+          this.cachedSelectedFile = null;
+        } else {
+          this.cachedSelectedFile = fileStatus;
+        }
+        
+        this.lastStateUpdate = now;
+        
+        // 只在状态真正变化时输出日志和动态管理空格键
+        if (wasFinderActive !== this.cachedFinderActive || oldSelectedFile !== this.cachedSelectedFile) {
+          console.log(`📊 状态更新: Finder=${this.cachedFinderActive}, 文件=${this.cachedSelectedFile || '无'}`);
+          
+          // 💡 动态管理空格键注册
+          this.manageSpaceKeyRegistration();
+        }
+      });
+    } catch (error) {
+      // 静默处理错误
+    }
+  }
+
+  // 💡 注册完全接管的优化快捷键
+  registerOptimizedShortcuts() {
+    console.log('🎯 注册完全接管快捷键...');
+    
+    // Cmd+X 剪切快捷键
+    const cutRegistered = globalShortcut.register('CommandOrControl+X', () => {
+      if (this.cachedFinderActive) {
+        console.log('✂️ Cmd+X: 在Finder中，处理剪切');
         this.handleCutShortcut();
       } else {
-        console.log('不在Finder中或不满足条件，模拟系统快捷键');
-        // 模拟系统快捷键
-        this.simulateSystemShortcut('x');
+        console.log('✂️ Cmd+X: 不在Finder中，转发系统快捷键');
+        this.forwardSystemShortcut('x');
       }
     });
     console.log('Cmd+X 快捷键注册:', cutRegistered ? '成功' : '失败');
 
-    // 注册原生的 Cmd+V 快捷键
-    const pasteRegistered = globalShortcut.register('CommandOrControl+V', async () => {
-      console.log('Cmd+V 快捷键被触发');
-      const shouldHandle = await this.shouldHandlePasteShortcut();
-      if (shouldHandle) {
-        console.log('在Finder中处理粘贴操作');
+    // Cmd+V 粘贴快捷键
+    const pasteRegistered = globalShortcut.register('CommandOrControl+V', () => {
+      if (this.cachedFinderActive && this.clipboardService.hasCutFiles()) {
+        console.log('📋 Cmd+V: 在Finder中且有剪切文件，处理粘贴');
         this.handlePasteShortcut();
       } else {
-        console.log('不在Finder中或没有要粘贴的文件，模拟系统快捷键');
-        // 模拟系统快捷键
-        this.simulateSystemShortcut('v');
+        console.log('📋 Cmd+V: 条件不满足，转发系统快捷键');
+        this.forwardSystemShortcut('v');
       }
     });
     console.log('Cmd+V 快捷键注册:', pasteRegistered ? '成功' : '失败');
 
-    // 注册空格键作为智能预览快捷键
-    const spaceRegistered = globalShortcut.register('Space', async () => {
-      console.log('空格键被触发');
-      
-      // 如果预览窗口已经打开，使用动画关闭它
-      if (this.previewWindow && !this.previewWindow.isDestroyed()) {
-        console.log('✓ 预览窗口已打开，关闭预览窗口');
-        await this.animateWindowClose();
-        return;
-      }
-      
-      // 实时检查Finder状态
-      const isInFinder = await this.isFinderActiveRealTime();
-      console.log(`🔍 实时状态检查: Finder=${isInFinder}`);
-      
-      if (!isInFinder) {
-        console.log('✗ 不在Finder中，使用系统默认行为');
-        this.simulateSystemShortcut('space');
-        return;
-      }
-      
-      // 实时检查当前选中的文件
-      const selectedFileInfo = await this.getSelectedFileRealTime();
-      console.log(`📁 实时文件信息: ${selectedFileInfo || '无'}`);
-      
-      if (!selectedFileInfo) {
-        console.log('✗ 没有选中文件，使用系统默认行为');
-        this.simulateSystemShortcut('space');
-        return;
-      }
-      
-      // 解析文件类型
-      const isFolder = selectedFileInfo.startsWith('folder:');
-      const isArchive = selectedFileInfo.startsWith('archive:') || 
-                       selectedFileInfo.includes('archive') || 
-                       selectedFileInfo.includes('zip') || 
-                       selectedFileInfo.includes('rar') ||
-                       selectedFileInfo.includes('tar') ||
-                       selectedFileInfo.includes('gz');
-      
-      console.log(`📂 文件类型分析: 文件夹=${isFolder}, 压缩包=${isArchive}`);
-      
-      if (isFolder || isArchive) {
-        console.log(`✓ 检测到${isFolder ? '文件夹' : '压缩包'}，使用我们的预览功能`);
-        this.handlePreviewShortcut();
-      } else {
-        console.log(`✗ 检测到普通文件(${selectedFileInfo})，使用系统默认行为`);
-        this.simulateSystemShortcut('space');
-      }
-    });
-    console.log('空格键注册:', spaceRegistered ? '成功' : '失败');
+    // 💡 空格键智能管理 - 不是全局注册，而是按需注册
+    this.setupSpaceKeyManagement();
 
-    // 保留备用快捷键
-    const backupPreviewRegistered = globalShortcut.register('CommandOrControl+Shift+P', () => {
-      console.log('Cmd+Shift+P 快捷键被触发');
+    // 备用快捷键
+    const backupRegistered = globalShortcut.register('CommandOrControl+Shift+P', () => {
+      console.log('🔄 Cmd+Shift+P: 强制预览');
       this.handlePreviewShortcut();
     });
-    console.log('Cmd+Shift+P 快捷键注册:', backupPreviewRegistered ? '成功' : '失败');
+    console.log('Cmd+Shift+P 快捷键注册:', backupRegistered ? '成功' : '失败');
     
-    console.log('✓ 全局快捷键注册完成');
+    console.log('✅ 完全接管快捷键注册完成');
   }
 
-  // 移除危险的轮询逻辑，使用简单安全的方法
+  // 💡 空格键智能管理 - 按需注册/注销
+  setupSpaceKeyManagement() {
+    console.log('🎯 设置空格键智能管理（按需注册）');
+    // 初始状态不注册空格键，让系统自然处理
+  }
 
-  createDefaultIcon() {
-    // 创建一个简单的默认托盘图标
-    const { nativeImage } = require('electron');
+  // 注册空格键
+  registerSpaceKey() {
+    if (this.spaceKeyRegistered) return;
     
-    // 创建一个简单的16x16像素的图标数据
-    const canvas = document.createElement ? null : null;
+    if (globalShortcut.isRegistered('Space')) {
+      globalShortcut.unregister('Space');
+    }
     
-    // 如果无法创建图标，返回空的NativeImage，Electron会使用默认图标
+    const registered = globalShortcut.register('Space', async () => {
+      await this.handleSpaceKeyFullTakeover();
+    });
+    
+    if (registered) {
+      this.spaceKeyRegistered = true;
+      console.log('🔒 空格键已注册拦截（文件夹预览模式）');
+    } else {
+      console.log('❌ 无法注册空格键');
+    }
+  }
+
+  // 注销空格键
+  unregisterSpaceKey() {
+    if (!this.spaceKeyRegistered) return;
+    
+    if (globalShortcut.isRegistered('Space')) {
+      globalShortcut.unregister('Space');
+      this.spaceKeyRegistered = false;
+      console.log('📤 空格键已释放给系统（PDF/文档模式）');
+    }
+  }
+
+  // 💡 智能管理空格键注册 - 根据当前状态决定是否需要拦截
+  manageSpaceKeyRegistration() {
+    const shouldRegister = this.shouldInterceptSpaceKey();
+    
+    if (shouldRegister && !this.spaceKeyRegistered) {
+      this.registerSpaceKey();
+    } else if (!shouldRegister && this.spaceKeyRegistered) {
+      this.unregisterSpaceKey();
+    }
+  }
+
+  // 判断是否需要拦截空格键
+  shouldInterceptSpaceKey() {
+    // 只有在 Finder 激活且选中了文件夹或压缩包时才拦截
+    if (!this.cachedFinderActive || !this.cachedSelectedFile) {
+      return false;
+    }
+
+    // 检查选中的是否是文件夹或压缩包
+    return this.cachedSelectedFile.startsWith('folder:') || 
+           this.cachedSelectedFile.startsWith('archive:');
+  }
+
+  // 💡 空格键智能拦截处理 - 简化版本（只在需要时才被调用）
+  async handleSpaceKeyFullTakeover() {
+    const now = Date.now();
+    
+    // 防抖处理
+    if (this.spaceKeyBlocked || (now - this.lastSpaceKeyTime) < this.spaceKeyThrottle) {
+      return;
+    }
+    
+    this.lastSpaceKeyTime = now;
+    this.spaceKeyBlocked = true;
+    
     try {
-      // 创建一个基本的数据URL图标
-      const iconData = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAAdgAAAHYBTnsmCAAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAAFYSURBVDiNpZM9SwNBEIafgwQLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sL';
-      return nativeImage.createFromDataURL(iconData);
+      console.log('⚡ 空格键拦截 - 显示文件夹/压缩包预览');
+      
+      // 如果我们的预览窗口已打开，直接关闭
+      if (this.previewWindow && !this.previewWindow.isDestroyed()) {
+        console.log('⚡ 预览窗口已打开，关闭窗口');
+        this.animateWindowClose();
+        return;
+      }
+      
+      // 由于只在需要时才注册，这里可以直接处理
+      const filePath = await this.getSelectedFilePathQuick();
+      if (filePath) {
+        console.log('✅ 显示自定义预览');
+        await this.showPreview(filePath);
+      } else {
+        console.log('❌ 无法获取文件路径');
+      }
+      
     } catch (error) {
-      // 如果都失败了，返回空的图标，系统会使用默认图标
-      return nativeImage.createEmpty();
+      console.error('❌ 空格键处理异常:', error);
+    } finally {
+      this.spaceKeyBlocked = false;
+    }
+  }
+
+  // 💡 简化的快捷键转发 - 临时注销让系统自然处理
+  forwardSystemShortcut(key) {
+    // 防止重复转发
+    if (this.isForwarding) {
+      return;
+    }
+    
+    let shortcutKey;
+    
+    if (key === 'space') {
+      shortcutKey = 'Space';
+    } else if (key === 'x') {
+      shortcutKey = 'CommandOrControl+X';
+    } else if (key === 'v') {
+      shortcutKey = 'CommandOrControl+V';
+    } else {
+      return;
+    }
+    
+    console.log(`🔄 转发快捷键: ${key} (临时注销方式)`);
+    
+    // 标记正在转发，防止循环
+    this.isForwarding = true;
+    
+    // 临时注销快捷键，让系统自然处理下一个按键
+    globalShortcut.unregister(shortcutKey);
+    
+    // 短暂延迟后重新注册，让用户的下一个按键能被系统接收
+    setTimeout(() => {
+      this.reregisterSingleShortcut(key, shortcutKey);
+      this.isForwarding = false;
+    }, 200); // 稍微增加延迟，确保用户按键被系统处理
+  }
+
+  // 💡 重新注册单个快捷键
+  reregisterSingleShortcut(key, shortcutKey) {
+    try {
+      if (key === 'space') {
+        const spaceRegistered = globalShortcut.register('Space', async () => {
+          await this.handleSpaceKeyFullTakeover();
+        });
+        if (!spaceRegistered) {
+          console.log('重新注册空格键失败');
+        }
+      } else if (key === 'x') {
+        const cutRegistered = globalShortcut.register('CommandOrControl+X', () => {
+          if (this.cachedFinderActive) {
+            console.log('✂️ Cmd+X: 在Finder中，处理剪切');
+            this.handleCutShortcut();
+          } else {
+            console.log('✂️ Cmd+X: 不在Finder中，转发系统快捷键');
+            this.forwardSystemShortcut('x');
+          }
+        });
+        if (!cutRegistered) {
+          console.log('重新注册Cmd+X失败');
+        }
+      } else if (key === 'v') {
+        const pasteRegistered = globalShortcut.register('CommandOrControl+V', () => {
+          if (this.cachedFinderActive && this.clipboardService.hasCutFiles()) {
+            console.log('📋 Cmd+V: 在Finder中且有剪切文件，处理粘贴');
+            this.handlePasteShortcut();
+          } else {
+            console.log('📋 Cmd+V: 条件不满足，转发系统快捷键');
+            this.forwardSystemShortcut('v');
+          }
+        });
+        if (!pasteRegistered) {
+          console.log('重新注册Cmd+V失败');
+        }
+      }
+    } catch (error) {
+      console.log(`重新注册快捷键 ${key} 时出错:`, error.message);
     }
   }
 
@@ -336,21 +566,51 @@ class FinderEnhanceApp {
 
   async handlePreviewShortcut() {
     try {
-      // 使用缓存的状态进行快速检查
-      if (this.isCurrentlyInFinder()) {
-        const selectedFile = await this.getSelectedFile();
+      // 💡 优化: 使用缓存状态和实时获取文件路径
+      if (this.cachedFinderActive && this.cachedSelectedFile) {
+        // 获取完整的文件路径
+        const selectedFile = await this.getSelectedFilePathQuick();
         if (selectedFile) {
           console.log('快捷键触发预览:', selectedFile);
           this.showPreview(selectedFile);
         } else {
-          console.log('未选中任何文件');
+          console.log('未能获取文件路径');
         }
       } else {
-        console.log('Finder未激活');
+        console.log('Finder未激活或未选中文件');
       }
     } catch (error) {
       console.error('处理预览快捷键时出错:', error);
     }
+  }
+
+  // 💡 快速获取选中文件的完整路径
+  async getSelectedFilePathQuick() {
+    const script = `
+      tell application "Finder"
+        try
+          set sel to selection
+          if (count of sel) > 0 then
+            return POSIX path of (item 1 of sel as alias)
+          else
+            return ""
+          end if
+        on error
+          return ""
+        end try
+      end tell
+    `;
+
+    return new Promise((resolve) => {
+      exec(`osascript -e '${script}'`, { timeout: 500 }, (error, stdout) => {
+        if (error || !stdout) {
+          resolve(null);
+        } else {
+          const result = stdout.trim();
+          resolve(result || null);
+        }
+      });
+    });
   }
 
   async handleCutShortcut() {
@@ -452,478 +712,6 @@ class FinderEnhanceApp {
             end repeat
             
             return pathList
-          on error
-            return ""
-          end try
-        end tell
-      `;
-      
-      exec(`osascript -e '${script}'`, (error, stdout) => {
-        if (error) {
-          resolve([]);
-        } else {
-          const result = stdout.trim();
-          if (result === '') {
-            resolve([]);
-          } else {
-            const paths = result.split('|||').map(p => p.trim()).filter(p => p);
-            resolve(paths);
-          }
-        }
-      });
-    });
-  }
-
-  async shouldHandleFinderShortcut() {
-    try {
-      // 优化：使用单个AppleScript调用完成所有检查
-      const script = `
-        tell application "System Events"
-          try
-            -- 检查前台应用是否是Finder
-            set frontApp to name of first application process whose frontmost is true
-            if frontApp is not "Finder" then
-              return "not_finder"
-            end if
-          on error
-            return "not_finder"
-          end try
-        end tell
-        
-        tell application "Finder"
-          try
-            set selectedItems to selection
-            if (count of selectedItems) = 0 then
-              return "no_selection"
-            end if
-            return "ok"
-          on error
-            return "error"
-          end try
-        end tell
-      `;
-
-      return new Promise((resolve) => {
-        exec(`osascript -e '${script}'`, (error, stdout) => {
-          if (error) {
-            console.log('快捷键检查失败，使用系统默认');
-            resolve(false);
-            return;
-          }
-          
-          const result = stdout.trim();
-          const shouldHandle = result === "ok";
-          
-          if (shouldHandle) {
-            console.log('✓ 在Finder中且有选中文件，处理剪切操作');
-          } else {
-            console.log('✗ 条件不满足，使用系统默认行为');
-          }
-          
-          resolve(shouldHandle);
-        });
-      });
-      
-    } catch (error) {
-      console.log('shouldHandleFinderShortcut异常:', error.message);
-      return false;
-    }
-  }
-
-
-
-  async shouldHandlePasteShortcut() {
-    try {
-      // 优化：先检查本地状态，再检查Finder状态
-      const hasCutFiles = this.clipboardService.hasCutFiles();
-      
-      if (!hasCutFiles) {
-        console.log('✗ 没有剪切的文件，使用系统默认行为');
-        return false;
-      }
-      
-      // 只有在有剪切文件时才检查Finder状态
-      const script = `
-        tell application "System Events"
-          try
-            set frontApp to name of first application process whose frontmost is true
-            if frontApp is "Finder" then
-              return "ok"
-            else
-              return "not_finder"
-            end if
-          on error
-            return "not_finder"
-          end try
-        end tell
-      `;
-
-      return new Promise((resolve) => {
-        exec(`osascript -e '${script}'`, (error, stdout) => {
-          if (error) {
-            console.log('粘贴检查失败，使用系统默认');
-            resolve(false);
-            return;
-          }
-          
-          const result = stdout.trim();
-          const shouldHandle = result === "ok";
-          
-          if (shouldHandle) {
-            console.log('✓ 在Finder中且有剪切文件，处理粘贴操作');
-          } else {
-            console.log('✗ 不在Finder中，使用系统默认行为');
-          }
-          
-          resolve(shouldHandle);
-        });
-      });
-      
-    } catch (error) {
-      console.log('shouldHandlePasteShortcut异常:', error.message);
-      return false;
-    }
-  }
-
-  async shouldHandleSpacePreview() {
-    try {
-      // 优化：使用更简单可靠的AppleScript检查Finder状态和选中项目类型
-      const script = `
-        tell application "System Events"
-          try
-            -- 检查前台应用是否是Finder
-            set frontApp to name of first application process whose frontmost is true
-            if frontApp is not "Finder" then
-              return "not_finder"
-            end if
-          on error
-            return "not_finder"
-          end try
-        end tell
-        
-        tell application "Finder"
-          try
-            set selectedItems to selection
-            if (count of selectedItems) = 0 then
-              return "no_selection"
-            end if
-            
-            -- 只检查第一个选中的项目
-            set firstItem to item 1 of selectedItems
-            
-            -- 使用class属性检查是否是文件夹
-            try
-              set itemClass to class of firstItem
-              if itemClass is folder then
-                return "folder"
-              end if
-            on error
-              -- 如果class检查失败，尝试其他方法
-            end try
-            
-            -- 获取文件类型信息
-            try
-              set itemKind to kind of firstItem
-              
-              -- 检查是否是压缩包（常见的压缩包类型）
-              if itemKind contains "archive" or itemKind contains "Archive" or itemKind contains "ZIP" or itemKind contains "zip" or itemKind contains "RAR" or itemKind contains "rar" or itemKind contains "7Z" or itemKind contains "7z" or itemKind contains "TAR" or itemKind contains "tar" or itemKind contains "GZ" or itemKind contains "gz" then
-                return "archive"
-              end if
-              
-              -- 返回文件类型以便调试
-              return "file:" & itemKind
-            on error errMsg2
-              return "kind_error:" & errMsg2
-            end try
-            
-          on error errMsg
-            return "error:" & errMsg
-          end try
-        end tell
-      `;
-
-      return new Promise((resolve) => {
-        exec(`osascript -e '${script}'`, (error, stdout) => {
-          if (error) {
-            console.log('预览检查失败，使用系统默认');
-            resolve(false);
-            return;
-          }
-          
-          const result = stdout.trim();
-          const shouldHandle = result === "folder" || result === "archive";
-          
-          if (shouldHandle) {
-            console.log(`✓ 检测到${result === "folder" ? "文件夹" : "压缩包"}，使用我们的预览功能`);
-          } else {
-            console.log(`✗ 检测到普通文件或其他情况(${result})，使用系统默认行为`);
-          }
-          
-          resolve(shouldHandle);
-        });
-      });
-      
-    } catch (error) {
-      console.log('shouldHandleSpacePreview异常:', error.message);
-      return false;
-    }
-  }
-
-  async shouldHandleSpacePreviewInFinder() {
-    try {
-      // 只检查选中项目类型，不重复检查Finder状态
-      const script = `
-        tell application "Finder"
-          try
-            set selectedItems to selection
-            if (count of selectedItems) = 0 then
-              return "no_selection"
-            end if
-            
-            -- 只检查第一个选中的项目
-            set firstItem to item 1 of selectedItems
-            
-            -- 使用class属性检查是否是文件夹
-            try
-              set itemClass to class of firstItem
-              if itemClass is folder then
-                return "folder"
-              end if
-            on error
-              -- 如果class检查失败，尝试其他方法
-            end try
-            
-            -- 获取文件类型信息
-            try
-              set itemKind to kind of firstItem
-              
-              -- 检查是否是压缩包（常见的压缩包类型）
-              if itemKind contains "archive" or itemKind contains "Archive" or itemKind contains "ZIP" or itemKind contains "zip" or itemKind contains "RAR" or itemKind contains "rar" or itemKind contains "7Z" or itemKind contains "7z" or itemKind contains "TAR" or itemKind contains "tar" or itemKind contains "GZ" or itemKind contains "gz" then
-                return "archive"
-              end if
-              
-              -- 返回文件类型以便调试
-              return "file:" & itemKind
-            on error errMsg2
-              return "kind_error:" & errMsg2
-            end try
-            
-          on error errMsg
-            return "error:" & errMsg
-          end try
-        end tell
-      `;
-
-      return new Promise((resolve) => {
-        exec(`osascript -e '${script}'`, (error, stdout) => {
-          if (error) {
-            console.log('文件类型检查失败，使用系统默认');
-            resolve(false);
-            return;
-          }
-          
-          const result = stdout.trim();
-          const shouldHandle = result === "folder" || result === "archive";
-          
-          if (shouldHandle) {
-            console.log(`✓ 检测到${result === "folder" ? "文件夹" : "压缩包"}，使用我们的预览功能`);
-          } else {
-            console.log(`✗ 检测到普通文件或其他情况(${result})，使用系统默认行为`);
-          }
-          
-          resolve(shouldHandle);
-        });
-      });
-      
-    } catch (error) {
-      console.log('shouldHandleSpacePreviewInFinder异常:', error.message);
-      return false;
-    }
-  }
-
-  simulateSystemShortcut(key) {
-    // 暂时注销我们的快捷键，发送系统快捷键，然后重新注册
-    let shortcutKey;
-    let keyCode;
-    let modifiers = '';
-    
-    if (key === 'space') {
-      shortcutKey = 'Space';
-      keyCode = 49; // 空格键的键码
-      modifiers = '{}'; // 无修饰键
-    } else {
-      shortcutKey = `CommandOrControl+${key.toUpperCase()}`;
-      keyCode = key === 'x' ? 7 : (key === 'v' ? 9 : 0); // x=7, v=9
-      modifiers = '{command down}';
-    }
-    
-    // 注销快捷键
-    globalShortcut.unregister(shortcutKey);
-    
-    // 使用AppleScript模拟系统快捷键
-    const script = `
-      tell application "System Events"
-        try
-          key code ${keyCode} using ${modifiers}
-        on error
-          -- 忽略错误
-        end try
-      end tell
-    `;
-    
-    exec(`osascript -e '${script}'`, (error) => {
-      if (error) {
-        console.log(`模拟快捷键 ${key === 'space' ? '空格' : 'Cmd+' + key.toUpperCase()} 时出错:`, error.message);
-      }
-      
-      // 延迟重新注册快捷键，避免立即捕获我们刚发送的快捷键
-      setTimeout(() => {
-        this.reregisterShortcut(key);
-      }, 100);
-    });
-  }
-
-  reregisterShortcut(key) {
-    try {
-      if (key === 'x') {
-        const cutRegistered = globalShortcut.register('CommandOrControl+Shift+X', async () => {
-          console.log('Cmd+Shift+X 快捷键被触发');
-          const shouldHandle = await this.shouldHandleCutShortcut();
-          if (shouldHandle) {
-            console.log('✓ 在Finder中，处理剪切操作');
-            this.handleCutShortcut();
-          } else {
-            console.log('✗ 不在Finder中，使用系统默认行为');
-            this.simulateSystemShortcut('x');
-          }
-        });
-        console.log('重新注册 Cmd+Shift+X:', cutRegistered ? '成功' : '失败');
-      } else if (key === 'v') {
-        const pasteRegistered = globalShortcut.register('CommandOrControl+Shift+V', async () => {
-          console.log('Cmd+Shift+V 快捷键被触发');
-          const shouldHandle = await this.shouldHandlePasteShortcut();
-          if (shouldHandle) {
-            console.log('✓ 在Finder中且有剪切文件，处理粘贴操作');
-            this.handlePasteShortcut();
-          } else {
-            console.log('✗ 不在Finder中或无剪切文件，使用系统默认行为');
-            this.simulateSystemShortcut('v');
-          }
-        });
-        console.log('重新注册 Cmd+Shift+V:', pasteRegistered ? '成功' : '失败');
-      } else if (key === 'space') {
-        const spaceRegistered = globalShortcut.register('Space', async () => {
-          console.log('空格键被触发');
-          
-          // 如果预览窗口已经打开，使用动画关闭它
-          if (this.previewWindow && !this.previewWindow.isDestroyed()) {
-            console.log('✓ 预览窗口已打开，关闭预览窗口');
-            await this.animateWindowClose();
-            return;
-          }
-          
-          // 实时检查Finder状态
-          const isInFinder = await this.isFinderActiveRealTime();
-          console.log(`🔍 实时状态检查: Finder=${isInFinder}`);
-          
-          if (!isInFinder) {
-            console.log('✗ 不在Finder中，使用系统默认行为');
-            this.simulateSystemShortcut('space');
-            return;
-          }
-          
-          // 实时检查当前选中的文件
-          const selectedFileInfo = await this.getSelectedFileRealTime();
-          console.log(`📁 实时文件信息: ${selectedFileInfo || '无'}`);
-          
-          if (!selectedFileInfo) {
-            console.log('✗ 没有选中文件，使用系统默认行为');
-            this.simulateSystemShortcut('space');
-            return;
-          }
-          
-          // 解析文件类型
-          const isFolder = selectedFileInfo.startsWith('folder:');
-          const isArchive = selectedFileInfo.startsWith('archive:') || 
-                           selectedFileInfo.includes('archive') || 
-                           selectedFileInfo.includes('zip') || 
-                           selectedFileInfo.includes('rar') ||
-                           selectedFileInfo.includes('tar') ||
-                           selectedFileInfo.includes('gz');
-          
-          console.log(`📂 文件类型分析: 文件夹=${isFolder}, 压缩包=${isArchive}`);
-          
-          if (isFolder || isArchive) {
-            console.log(`✓ 检测到${isFolder ? '文件夹' : '压缩包'}，使用我们的预览功能`);
-            this.handlePreviewShortcut();
-          } else {
-            console.log(`✗ 检测到普通文件(${selectedFileInfo})，使用系统默认行为`);
-            this.simulateSystemShortcut('space');
-          }
-        });
-        console.log('重新注册空格键:', spaceRegistered ? '成功' : '失败');
-      }
-    } catch (error) {
-      console.log(`重新注册快捷键 ${key} 时出错:`, error.message);
-    }
-  }
-
-
-
-  async getSelectedFile() {
-    return new Promise((resolve, reject) => {
-      console.log('尝试获取选中的文件...');
-      exec(`osascript -e '
-        tell application "Finder"
-          try
-            set selectedItems to selection
-            if (count of selectedItems) > 0 then
-              set firstItem to item 1 of selectedItems
-              return POSIX path of (firstItem as alias)
-            else
-              return ""
-            end if
-          on error errMsg
-            return "ERROR: " & errMsg
-          end try
-        end tell
-      '`, (error, stdout) => {
-        console.log('AppleScript输出:', stdout);
-        if (error) {
-          console.error('AppleScript错误:', error);
-          reject(error);
-        } else {
-          const result = stdout.trim();
-          if (result.startsWith('ERROR:')) {
-            console.error('Finder访问错误:', result);
-            resolve('');
-          } else {
-            resolve(result);
-          }
-        }
-      });
-    });
-  }
-
-  async getSelectedFiles() {
-    return new Promise((resolve, reject) => {
-      const script = `
-        tell application "Finder"
-          try
-            set selectedItems to selection
-            if (count of selectedItems) = 0 then
-              return ""
-            end if
-            
-            set pathList to ""
-            repeat with anItem in selectedItems
-              if pathList is not "" then
-                set pathList to pathList & "|||"
-              end if
-              set pathList to pathList & POSIX path of (anItem as alias)
-            end repeat
-            
-            return pathList
           on error errMsg
             return "ERROR:" & errMsg
           end try
@@ -948,29 +736,6 @@ class FinderEnhanceApp {
             console.log('解析的文件路径:', paths);
             resolve(paths);
           }
-        }
-      });
-    });
-  }
-
-  async isFinderActive() {
-    return new Promise((resolve) => {
-      exec(`osascript -e '
-        tell application "System Events"
-          set frontApp to name of first application process whose frontmost is true
-          if frontApp is "Finder" then
-            return "true"
-          else
-            return "false"
-          end if
-        end tell
-      '`, (error, stdout) => {
-        console.log('Finder激活检查结果:', stdout.trim());
-        if (error) {
-          console.error('检查Finder激活状态时出错:', error);
-          resolve(false);
-        } else {
-          resolve(stdout.trim() === 'true');
         }
       });
     });
@@ -1279,284 +1044,56 @@ class FinderEnhanceApp {
     }
   }
 
-  // 后台监控方法
-  startBackgroundMonitor() {
-    if (this.backgroundMonitor) {
-      clearInterval(this.backgroundMonitor);
-    }
-    
-    console.log('🔍 启动后台Finder状态监控...');
-    
-    // 立即执行一次初始化
-    this.updateFinderStatus().then(() => {
-      console.log(`📊 初始状态: Finder=${this.isFinderActive}, 选中文件=${this.currentSelectedFile || '无'}`);
-    });
-    
-    this.backgroundMonitor = setInterval(async () => {
-      try {
-        await this.updateFinderStatus();
-      } catch (error) {
-        // 静默处理错误，避免日志过多
-        if (Date.now() - this.lastFinderCheck > 5000) {
-          console.log('后台监控遇到错误:', error.message);
-          this.lastFinderCheck = Date.now();
-        }
-      }
-    }, this.monitorInterval);
-  }
-
-  stopBackgroundMonitor() {
-    if (this.backgroundMonitor) {
-      clearInterval(this.backgroundMonitor);
-      this.backgroundMonitor = null;
-      console.log('🛑 停止后台Finder状态监控');
-    }
-  }
-
-  async updateFinderStatus() {
-    const now = Date.now();
-    
-    // 检查Finder是否为活动应用
-    const script = `
-      tell application "System Events"
-        try
-          set frontApp to name of first application process whose frontmost is true
-          if frontApp is "Finder" then
-            return "active"
-          else
-            return "inactive"
-          end if
-        on error
-          return "error"
-        end try
-      end tell
-    `;
-
-    return new Promise((resolve) => {
-      exec(`osascript -e '${script}'`, { timeout: 500 }, (error, stdout) => {
-        if (error) {
-          resolve();
-          return;
-        }
-
-        const result = stdout.trim();
-        const wasFinderActive = this.isFinderActive;
-        this.isFinderActive = (result === 'active');
-
-        // 如果Finder状态发生变化，更新选中文件信息
-        if (this.isFinderActive && (!wasFinderActive || now - this.lastFinderCheck > 1000)) {
-          this.updateSelectedFileInfo();
-        }
-        
-        // 即使Finder不活动，也定期更新选中文件信息（但频率较低）
-        if (!this.isFinderActive && now - this.lastFinderCheck > 2000) {
-          this.updateSelectedFileInfo();
-        }
-
-        this.lastFinderCheck = now;
-        resolve();
-      });
-    });
-  }
-
-  async updateSelectedFileInfo() {
-    // 不管Finder是否活动，都尝试获取选择信息
-    // 这样即使用户切换到其他应用，我们也能保持最新的选择状态
-    
-    try {
-      const script = `
-        tell application "Finder"
-          try
-            set selectionCount to count of selection
-            if selectionCount > 0 then
-              set selectedItem to item 1 of selection
-              set itemClass to class of selectedItem
-              set itemName to name of selectedItem
-              
-              if itemClass is folder then
-                return "folder:" & itemName
-              else
-                set itemKind to kind of selectedItem
-                -- 简化压缩包检测
-                if itemKind contains "archive" or itemKind contains "Archive" or itemKind contains "ZIP" or itemKind contains "zip" or itemKind contains "RAR" or itemKind contains "rar" then
-                  return "archive:" & itemName
-                else
-                  return "file:" & itemName
-                end if
-              end if
-            else
-              return "none"
-            end if
-          on error errMsg
-            return "none"
-          end try
-        end tell
-      `;
-
-      return new Promise((resolve) => {
-        exec(`osascript -e '${script}'`, { timeout: 1000 }, (error, stdout) => {
-          console.log(`🔍 AppleScript执行结果: error=${!!error}, stdout="${stdout ? stdout.trim() : '空'}"`);
-          
-          if (!error && stdout) {
-            const result = stdout.trim();
-            console.log(`📋 解析结果: "${result}"`);
-            
-            if (result !== 'none' && !result.startsWith('error:')) {
-              const oldFile = this.currentSelectedFile;
-              this.currentSelectedFile = result;
-              
-              // 只有当文件发生变化时才显示更新信息
-              if (oldFile !== result) {
-                console.log(`📁 选中文件更新: ${oldFile || '无'} → ${result}`);
-              }
-            } else {
-              if (this.currentSelectedFile !== null) {
-                console.log(`📁 选中文件清空: ${this.currentSelectedFile} → 无`);
-              }
-              this.currentSelectedFile = null;
-            }
-          } else {
-            if (error) {
-              console.log(`❌ AppleScript错误: ${error.message}`);
-            }
-            if (this.currentSelectedFile !== null) {
-              console.log(`📁 选中文件清空: ${this.currentSelectedFile} → 无 (错误)`);
-            }
-            this.currentSelectedFile = null;
-          }
-          resolve();
-        });
-      });
-    } catch (error) {
-      console.log(`💥 updateSelectedFileInfo异常: ${error.message}`);
-      this.currentSelectedFile = null;
-    }
-  }
-
   // 快速检查方法，使用缓存的状态
   isCurrentlyInFinder() {
-    return this.isFinderActive;
+    return this.cachedFinderActive;
   }
 
   getCurrentSelectedFileInfo() {
-    return this.currentSelectedFile;
+    return this.cachedSelectedFile;
   }
 
+  // 💡 清理监控定时器
+  stopOptimizedMonitor() {
+    if (this.monitorTimer) {
+      clearInterval(this.monitorTimer);
+      this.monitorTimer = null;
+      console.log('🛑 停止优化状态监控');
+    }
+  }
 
-
-  // 实时检查Finder是否为活动应用
-  async isFinderActiveRealTime() {
+  // 💡 快速检测系统Quick Look状态
+  async checkQuickLookStatus() {
     const script = `
       tell application "System Events"
         try
-          set frontApp to name of first application process whose frontmost is true
-          if frontApp is "Finder" then
-            return "true"
+          -- 检查Quick Look进程
+          set quickLookApp to first application process whose name is "QuickLookUIService" or name is "Quick Look"
+          if quickLookApp exists then
+            -- 检查是否有可见窗口
+            set quickLookWindows to (every window of quickLookApp whose visible is true)
+            if (count of quickLookWindows) > 0 then
+              return "open"
+            else
+              return "closed"
+            end if
           else
-            return "false"
+            return "closed"
           end if
         on error
-          return "false"
+          return "closed"
         end try
       end tell
     `;
 
     return new Promise((resolve) => {
-      exec(`osascript -e '${script}'`, { timeout: 500 }, (error, stdout) => {
+      exec(`osascript -e '${script}'`, { timeout: 200 }, (error, stdout) => {
         if (error) {
           resolve(false);
           return;
         }
         const result = stdout.trim();
-        resolve(result === 'true');
-      });
-    });
-  }
-
-  // 实时获取选中文件信息
-  async getSelectedFileRealTime() {
-    // 方法1: 尝试不激活Finder的检测
-    const script1 = `
-      tell application "Finder"
-        try
-          set sel to selection
-          if (count of sel) > 0 then
-            set selectedItem to item 1 of sel
-            set itemClass to class of selectedItem
-            set itemName to name of selectedItem
-            
-            if itemClass is folder then
-              return "folder:" & itemName
-            else
-              set itemKind to kind of selectedItem
-              if itemKind contains "archive" or itemKind contains "Archive" or itemKind contains "ZIP" or itemKind contains "zip" or itemKind contains "RAR" or itemKind contains "rar" then
-                return "archive:" & itemName
-              else
-                return "file:" & itemName
-              end if
-            end if
-          else
-            return "none"
-          end if
-        on error errMsg
-          return "error"
-        end try
-      end tell
-    `;
-
-    return new Promise((resolve) => {
-      exec(`osascript -e '${script1}'`, { timeout: 1000 }, (error, stdout) => {
-        if (!error && stdout) {
-          const result = stdout.trim();
-          if (result !== 'none' && result !== 'error') {
-            resolve(result);
-            return;
-          }
-        }
-        
-        // 方法2: 如果方法1失败，尝试激活Finder
-        const script2 = `
-          tell application "Finder"
-            activate
-            delay 0.1
-            try
-              set sel to selection
-              if (count of sel) > 0 then
-                set selectedItem to item 1 of sel
-                set itemClass to class of selectedItem
-                set itemName to name of selectedItem
-                
-                if itemClass is folder then
-                  return "folder:" & itemName
-                else
-                  set itemKind to kind of selectedItem
-                  if itemKind contains "archive" or itemKind contains "Archive" or itemKind contains "ZIP" or itemKind contains "zip" or itemKind contains "RAR" or itemKind contains "rar" then
-                    return "archive:" & itemName
-                  else
-                    return "file:" & itemName
-                  end if
-                end if
-              else
-                return "none"
-              end if
-            on error errMsg
-              return "none"
-            end try
-          end tell
-        `;
-        
-        exec(`osascript -e '${script2}'`, { timeout: 2000 }, (error2, stdout2) => {
-          if (error2 || !stdout2) {
-            resolve(null);
-            return;
-          }
-          const result = stdout2.trim();
-          if (result === 'none') {
-            resolve(null);
-          } else {
-            resolve(result);
-          }
-        });
+        resolve(result === 'open');
       });
     });
   }
@@ -1615,14 +1152,9 @@ app.on('will-quit', () => {
   // 清理全局快捷键
   globalShortcut.unregisterAll();
   
-  // 清理后台监控
-  if (finderApp.backgroundMonitor) {
-    finderApp.stopBackgroundMonitor();
-  }
-  
-  // 清理定时器（如果存在）
-  if (finderApp.spaceKeyInterval) {
-    clearInterval(finderApp.spaceKeyInterval);
+  // 清理优化的状态监控
+  if (finderApp.stopOptimizedMonitor) {
+    finderApp.stopOptimizedMonitor();
   }
 });
 
