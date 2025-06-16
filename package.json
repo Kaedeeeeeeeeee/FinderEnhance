@@ -1,0 +1,41 @@
+{
+  "name": "finder-enhance",
+  "version": "1.0.0",
+  "description": "Mac Finder功能增强工具",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder",
+    "build-mac": "electron-builder --mac",
+    "dev": "electron . --dev"
+  },
+  "keywords": ["finder", "mac", "enhance", "preview", "cut"],
+  "author": "FinderEnhance Team",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^27.0.0",
+    "electron-builder": "^24.6.4"
+  },
+  "dependencies": {
+    "node-global-key-listener": "^0.1.1",
+    "yauzl": "^2.10.0",
+    "tar": "^6.2.0"
+  },
+  "build": {
+    "appId": "com.finderenhance.app",
+    "productName": "FinderEnhance",
+    "directories": {
+      "output": "dist"
+    },
+    "mac": {
+      "category": "public.app-category.utilities",
+      "target": "dmg",
+      "icon": "assets/icon.icns"
+    },
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "node_modules/**/*"
+    ]
+  }
+} 

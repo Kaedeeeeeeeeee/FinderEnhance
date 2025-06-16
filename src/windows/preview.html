@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>文件预览</title>
+    <link rel="stylesheet" href="preview.css">
+</head>
+<body>
+    <div class="preview-container">
+        <div class="content">
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+            </div>
+
+            <div class="error" id="error" style="display: none;">
+                <div class="error-icon">⚠️</div>
+                <div class="error-message" id="errorMessage">无法读取内容</div>
+            </div>
+
+            <div class="file-list" id="fileList" style="display: none;">
+                <!-- 文件列表将在这里动态生成 -->
+            </div>
+
+            <div class="empty-state" id="emptyState" style="display: none;">
+                <div class="empty-icon">📭</div>
+                <div class="empty-message">文件夹为空</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="preview.js"></script>
+</body>
+</html> 

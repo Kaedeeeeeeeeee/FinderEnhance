@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>设置 - Finder增强工具</title>
+    <link rel="stylesheet" href="preferences.css">
+</head>
+<body>
+    <div class="preferences-container">
+        <div class="header">
+            <h1>设置</h1>
+            <p>配置Finder增强工具的功能选项</p>
+        </div>
+
+        <div class="content">
+            <div class="section">
+                <h2>🔄 空格预览功能</h2>
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <label for="enableSpacePreview">启用空格预览</label>
+                        <p class="setting-desc">在Finder中按下空格键快速预览文件夹和压缩包内容</p>
+                    </div>
+                    <div class="setting-control">
+                        <input type="checkbox" id="enableSpacePreview" checked>
+                        <label for="enableSpacePreview" class="toggle"></label>
+                    </div>
+                </div>
+
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <label for="previewLimit">预览文件数量限制</label>
+                        <p class="setting-desc">设置在预览窗口中显示的最大文件数量</p>
+                    </div>
+                    <div class="setting-control">
+                        <select id="previewLimit">
+                            <option value="50" selected>50 个文件</option>
+                            <option value="100">100 个文件</option>
+                            <option value="200">200 个文件</option>
+                            <option value="500">500 个文件</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <label for="showHiddenFiles">显示隐藏文件</label>
+                        <p class="setting-desc">在预览中显示以点开头的隐藏文件</p>
+                    </div>
+                    <div class="setting-control">
+                        <input type="checkbox" id="showHiddenFiles">
+                        <label for="showHiddenFiles" class="toggle"></label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>✂️ 剪切功能</h2>
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <label for="enableCutShortcut">启用Cmd+X剪切</label>
+                        <p class="setting-desc">在Finder中使用Cmd+X快捷键剪切文件和文件夹</p>
+                    </div>
+                    <div class="setting-control">
+                        <input type="checkbox" id="enableCutShortcut" checked>
+                        <label for="enableCutShortcut" class="toggle"></label>
+                    </div>
+                </div>
+
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <label for="showCutFeedback">显示剪切反馈</label>
+                        <p class="setting-desc">剪切文件时显示通知提示</p>
+                    </div>
+                    <div class="setting-control">
+                        <input type="checkbox" id="showCutFeedback" checked>
+                        <label for="showCutFeedback" class="toggle"></label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>🎨 界面设置</h2>
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <label for="defaultView">默认预览视图</label>
+                        <p class="setting-desc">设置预览窗口的默认显示模式</p>
+                    </div>
+                    <div class="setting-control">
+                        <select id="defaultView">
+                            <option value="list" selected>列表视图</option>
+                            <option value="grid">网格视图</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <label for="previewWindowSize">预览窗口大小</label>
+                        <p class="setting-desc">设置预览窗口的默认尺寸</p>
+                    </div>
+                    <div class="setting-control">
+                        <select id="previewWindowSize">
+                            <option value="small">小 (600x400)</option>
+                            <option value="medium" selected>中 (800x600)</option>
+                            <option value="large">大 (1200x800)</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>🔧 高级设置</h2>
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <label for="autoStart">开机自启动</label>
+                        <p class="setting-desc">系统启动时自动运行Finder增强工具</p>
+                    </div>
+                    <div class="setting-control">
+                        <input type="checkbox" id="autoStart">
+                        <label for="autoStart" class="toggle"></label>
+                    </div>
+                </div>
+
+                <div class="setting-item">
+                    <div class="setting-info">
+                        <label for="checkUpdates">自动检查更新</label>
+                        <p class="setting-desc">定期检查应用程序更新</p>
+                    </div>
+                    <div class="setting-control">
+                        <input type="checkbox" id="checkUpdates" checked>
+                        <label for="checkUpdates" class="toggle"></label>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer">
+            <button class="btn btn-secondary" id="resetBtn">重置默认</button>
+            <div class="footer-actions">
+                <button class="btn btn-secondary" id="cancelBtn">取消</button>
+                <button class="btn btn-primary" id="saveBtn">保存设置</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="preferences.js"></script>
+</body>
+</html> 
