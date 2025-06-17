@@ -31,6 +31,11 @@ class FinderEnhanceApp {
     this.isSimulating = false; // 防止快捷键模拟循环
     this.spaceKeyRegistered = false; // 记录空格键是否已注册
     
+    // 💡 快捷键健康监控
+    this.healthCheckTimer = null;
+    this.cutShortcutRegistered = false;
+    this.pasteShortcutRegistered = false;
+    
     this.settings = {
       enableSpacePreview: true,
       enableCutShortcut: true,
@@ -69,6 +74,9 @@ class FinderEnhanceApp {
     
     // 注册完全接管的全局快捷键
     this.registerOptimizedShortcuts();
+    
+    // 启动快捷键健康监控
+    this.startShortcutHealthCheck();
     
     // 初始化服务
     console.log('预览服务已初始化');
@@ -358,6 +366,9 @@ class FinderEnhanceApp {
           
           // 💡 动态管理空格键注册
           this.manageSpaceKeyRegistration();
+          
+          // 💡 动态管理剪切/粘贴快捷键
+          this.manageCutPasteShortcuts();
         }
       });
     } catch (error) {
@@ -365,36 +376,20 @@ class FinderEnhanceApp {
     }
   }
 
-  // 💡 注册完全接管的优化快捷键
+  // 💡 动态快捷键管理 - 只在需要时才注册
   registerOptimizedShortcuts() {
-    console.log('🎯 注册智能快捷键...');
+    console.log('🎯 启动动态快捷键管理...');
     
-    // 🔄 改进策略：只在真正需要时才拦截快捷键
-    // Cmd+X 剪切快捷键 - 只在Finder中且有选中文件时拦截
-    const cutRegistered = globalShortcut.register('CommandOrControl+X', () => {
-      if (this.cachedFinderActive && this.cachedSelectedFile) {
-        console.log('✂️ Cmd+X: 在Finder中且有选中文件，处理剪切');
-        this.handleCutShortcut();
-      } else {
-        console.log('✂️ Cmd+X: 条件不满足，使用系统原生剪切');
-        // 🚫 不要拦截，让系统处理
-        this.simulateSystemShortcut('CommandOrControl+X');
-      }
-    });
-    console.log('Cmd+X 快捷键注册:', cutRegistered ? '成功' : '失败');
-
-    // Cmd+V 粘贴快捷键 - 只在Finder中且有我们剪切的文件时拦截
-    const pasteRegistered = globalShortcut.register('CommandOrControl+V', () => {
-      if (this.cachedFinderActive && this.clipboardService.hasCutFiles()) {
-        console.log('📋 Cmd+V: 在Finder中且有我们剪切的文件，处理粘贴');
-        this.handlePasteShortcut();
-      } else {
-        console.log('📋 Cmd+V: 条件不满足，使用系统原生粘贴');
-        // 🚫 不要拦截，让系统处理
-        this.simulateSystemShortcut('CommandOrControl+V');
-      }
-    });
-    console.log('Cmd+V 快捷键注册:', pasteRegistered ? '成功' : '失败');
+    // 🔄 最新策略：动态注册/注销快捷键，而不是一直注册然后临时释放
+    // 这样可以完全避免按键丢失问题
+    
+    this.cutShortcutRegistered = false;
+    this.pasteShortcutRegistered = false;
+    
+    // 初始状态下不注册任何快捷键，让系统自然处理
+    // 只有当进入Finder且满足条件时才动态注册
+    
+    console.log('✅ 动态快捷键管理已启动，初始状态：让系统自然处理所有快捷键');
 
     // 💡 空格键智能管理 - 不是全局注册，而是按需注册
     this.setupSpaceKeyManagement();
@@ -412,70 +407,11 @@ class FinderEnhanceApp {
     console.log('✅ 智能快捷键注册完成');
   }
 
-  // 🔄 改进的系统快捷键模拟方法
-  simulateSystemShortcut(shortcut) {
-    // 防止重复调用
-    if (this.isSimulating) {
-      return;
-    }
-    
-    this.isSimulating = true;
-    
-    // 临时注销快捷键
-    globalShortcut.unregister(shortcut);
-    
-    // 立即模拟按键
-    const { exec } = require('child_process');
-    
-    if (shortcut === 'CommandOrControl+X') {
-      exec(`osascript -e 'tell application "System Events" to keystroke "x" using command down'`, (error) => {
-        if (error) {
-          console.log('模拟Cmd+X失败:', error.message);
-        }
-        // 短暂延迟后重新注册
-        setTimeout(() => {
-          this.reregisterShortcut('CommandOrControl+X');
-          this.isSimulating = false;
-        }, 100);
-      });
-    } else if (shortcut === 'CommandOrControl+V') {
-      exec(`osascript -e 'tell application "System Events" to keystroke "v" using command down'`, (error) => {
-        if (error) {
-          console.log('模拟Cmd+V失败:', error.message);
-        }
-        // 短暂延迟后重新注册
-        setTimeout(() => {
-          this.reregisterShortcut('CommandOrControl+V');
-          this.isSimulating = false;
-        }, 100);
-      });
-    }
-  }
 
-  // 重新注册单个快捷键
-  reregisterShortcut(shortcut) {
-    if (shortcut === 'CommandOrControl+X') {
-      globalShortcut.register('CommandOrControl+X', () => {
-        if (this.cachedFinderActive && this.cachedSelectedFile) {
-          console.log('✂️ Cmd+X: 在Finder中且有选中文件，处理剪切');
-          this.handleCutShortcut();
-        } else {
-          console.log('✂️ Cmd+X: 条件不满足，使用系统原生剪切');
-          this.simulateSystemShortcut('CommandOrControl+X');
-        }
-      });
-    } else if (shortcut === 'CommandOrControl+V') {
-      globalShortcut.register('CommandOrControl+V', () => {
-        if (this.cachedFinderActive && this.clipboardService.hasCutFiles()) {
-          console.log('📋 Cmd+V: 在Finder中且有我们剪切的文件，处理粘贴');
-          this.handlePasteShortcut();
-        } else {
-          console.log('📋 Cmd+V: 条件不满足，使用系统原生粘贴');
-          this.simulateSystemShortcut('CommandOrControl+V');
-        }
-      });
-    }
-  }
+
+
+
+
 
   // 💡 空格键智能管理 - 按需注册/注销
   setupSpaceKeyManagement() {
@@ -522,6 +458,87 @@ class FinderEnhanceApp {
       this.registerSpaceKey();
     } else if (!shouldRegister && this.spaceKeyRegistered) {
       this.unregisterSpaceKey();
+    }
+  }
+
+  // 💡 动态管理剪切/粘贴快捷键
+  manageCutPasteShortcuts() {
+    // 判断是否需要注册Cmd+X
+    const shouldRegisterCut = this.cachedFinderActive && this.cachedSelectedFile;
+    
+    if (shouldRegisterCut && !this.cutShortcutRegistered) {
+      console.log('📌 注册 Cmd+X 快捷键（Finder中有选中文件）');
+      this.registerCutShortcut();
+    } else if (!shouldRegisterCut && this.cutShortcutRegistered) {
+      console.log('📤 注销 Cmd+X 快捷键（让系统自然处理）');
+      this.unregisterCutShortcut();
+    }
+    
+    // 判断是否需要注册Cmd+V
+    const shouldRegisterPaste = this.cachedFinderActive && this.clipboardService.hasCutFiles();
+    
+    if (shouldRegisterPaste && !this.pasteShortcutRegistered) {
+      console.log('📌 注册 Cmd+V 快捷键（Finder中有我们剪切的文件）');
+      this.registerPasteShortcut();
+    } else if (!shouldRegisterPaste && this.pasteShortcutRegistered) {
+      console.log('📤 注销 Cmd+V 快捷键（让系统自然处理）');
+      this.unregisterPasteShortcut();
+    }
+  }
+
+  // 注册Cmd+X快捷键
+  registerCutShortcut() {
+    if (this.cutShortcutRegistered) return;
+    
+    const registered = globalShortcut.register('CommandOrControl+X', () => {
+      console.log('✂️ Cmd+X: 在Finder中处理剪切');
+      this.handleCutShortcut();
+    });
+    
+    if (registered) {
+      this.cutShortcutRegistered = true;
+      console.log('✅ Cmd+X 快捷键注册成功');
+    } else {
+      console.log('❌ Cmd+X 快捷键注册失败');
+    }
+  }
+
+  // 注销Cmd+X快捷键
+  unregisterCutShortcut() {
+    if (!this.cutShortcutRegistered) return;
+    
+    if (globalShortcut.isRegistered('CommandOrControl+X')) {
+      globalShortcut.unregister('CommandOrControl+X');
+      this.cutShortcutRegistered = false;
+      console.log('✅ Cmd+X 快捷键已注销');
+    }
+  }
+
+  // 注册Cmd+V快捷键
+  registerPasteShortcut() {
+    if (this.pasteShortcutRegistered) return;
+    
+    const registered = globalShortcut.register('CommandOrControl+V', () => {
+      console.log('📋 Cmd+V: 在Finder中处理粘贴');
+      this.handlePasteShortcut();
+    });
+    
+    if (registered) {
+      this.pasteShortcutRegistered = true;
+      console.log('✅ Cmd+V 快捷键注册成功');
+    } else {
+      console.log('❌ Cmd+V 快捷键注册失败');
+    }
+  }
+
+  // 注销Cmd+V快捷键
+  unregisterPasteShortcut() {
+    if (!this.pasteShortcutRegistered) return;
+    
+    if (globalShortcut.isRegistered('CommandOrControl+V')) {
+      globalShortcut.unregister('CommandOrControl+V');
+      this.pasteShortcutRegistered = false;
+      console.log('✅ Cmd+V 快捷键已注销');
     }
   }
 
@@ -1450,6 +1467,55 @@ class FinderEnhanceApp {
     }
   }
 
+  // 启动快捷键健康检查
+  startShortcutHealthCheck() {
+    if (this.healthCheckTimer) {
+      clearInterval(this.healthCheckTimer);
+    }
+    
+    console.log('🏥 启动快捷键健康监控...');
+    
+    // 每5秒检查一次快捷键注册状态
+    this.healthCheckTimer = setInterval(() => {
+      this.checkShortcutHealth();
+    }, 5000);
+  }
+
+  // 检查快捷键健康状态
+  checkShortcutHealth() {
+    try {
+      // 动态注册策略下，主要检查状态一致性
+      const cutRegistered = globalShortcut.isRegistered('CommandOrControl+X');
+      const pasteRegistered = globalShortcut.isRegistered('CommandOrControl+V');
+      
+      // 验证注册状态是否与我们的记录一致
+      if (cutRegistered !== this.cutShortcutRegistered) {
+        console.log(`⚠️ Cmd+X 状态不一致: 实际=${cutRegistered}, 记录=${this.cutShortcutRegistered}`);
+        this.cutShortcutRegistered = cutRegistered;
+      }
+      
+      if (pasteRegistered !== this.pasteShortcutRegistered) {
+        console.log(`⚠️ Cmd+V 状态不一致: 实际=${pasteRegistered}, 记录=${this.pasteShortcutRegistered}`);
+        this.pasteShortcutRegistered = pasteRegistered;
+      }
+      
+      // 重新评估是否需要注册/注销快捷键
+      this.manageCutPasteShortcuts();
+      
+    } catch (error) {
+      console.log('❌ 快捷键健康检查时出错:', error.message);
+    }
+  }
+
+  // 停止健康监控
+  stopShortcutHealthCheck() {
+    if (this.healthCheckTimer) {
+      clearInterval(this.healthCheckTimer);
+      this.healthCheckTimer = null;
+      console.log('🛑 快捷键健康监控已停止');
+    }
+  }
+
   // 💡 正确退出应用
   quitApp() {
     console.log('🚪 开始退出应用程序...');
@@ -1464,6 +1530,9 @@ class FinderEnhanceApp {
       
       // 清理监控定时器
       this.stopOptimizedMonitor();
+      
+      // 清理快捷键健康监控
+      this.stopShortcutHealthCheck();
       
       // 清理全局快捷键
       globalShortcut.unregisterAll();

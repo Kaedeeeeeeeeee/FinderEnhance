@@ -61,7 +61,13 @@
 
 ## 版本历史
 
-### v3.0.0 (当前版本) - UI革新与体验升级
+### v3.0.2 (当前版本) - 剪切功能完美修复
+- **彻底解决剪切bug**：采用动态快捷键管理策略，完全避免权限问题
+- **一次按键成功**：在任何应用中剪切文本都能一次成功，无需多次按键
+- **智能快捷键管理**：只在需要时注册快捷键，其他时候让系统自然处理
+- **完美兼容性**：修复所有macOS权限限制导致的按键失效问题
+
+### v3.0.0 - UI革新与体验升级
 - **全新毛玻璃UI设计**：现代化界面，完美融入macOS
 - **智能设置系统**：可视化设置界面，实时配置更新
 - **系统优化升级**：更稳定的快捷键系统，增强的窗口管理
@@ -94,8 +100,8 @@
 
 从 [GitHub Releases](https://github.com/Kaedeeeeeeeeee/FinderEnhance/releases/latest) 下载最新版本：
 
-- **Apple Silicon Mac (M1/M2/M3)**：[FinderEnhance-3.0.0-arm64.dmg](https://github.com/Kaedeeeeeeeeee/FinderEnhance/releases/download/v3.0.0/FinderEnhance-3.0.0-arm64.dmg) (96MB)
-- **Intel Mac**：[FinderEnhance-3.0.0.dmg](https://github.com/Kaedeeeeeeeeee/FinderEnhance/releases/download/v3.0.0/FinderEnhance-3.0.0.dmg) (101MB)
+- **Apple Silicon Mac (M1/M2/M3)**：[FinderEnhance-3.0.2-arm64.dmg](https://github.com/Kaedeeeeeeeeee/FinderEnhance/releases/download/v3.0.2/FinderEnhance-3.0.2-arm64.dmg) (101MB)
+- **Intel Mac**：[FinderEnhance-3.0.2.dmg](https://github.com/Kaedeeeeeeeeee/FinderEnhance/releases/download/v3.0.2/FinderEnhance-3.0.2.dmg) (106MB)
 
 ### 快速安装步骤
 

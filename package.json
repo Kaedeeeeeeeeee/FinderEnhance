@@ -1,6 +1,6 @@
 {
   "name": "finder-enhance",
-  "version": "3.0.0",
+  "version": "3.0.2",
   "description": "Mac Finder功能增强工具 - 智能空格预览和快捷剪切",
   "main": "src/main.js",
   "homepage": "https://github.com/Kaedeeeeeeeeee/FinderEnhance",
