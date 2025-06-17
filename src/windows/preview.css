@@ -12,6 +12,52 @@ body {
     -webkit-user-select: none;
 }
 
+/* 明确隐藏任何可能的窗口控制按钮 */
+.close-button,
+.minimize-button,
+.zoom-button,
+.window-controls,
+button[class*="close"],
+button[class*="minimize"],
+button[class*="zoom"],
+button[class*="maximize"],
+[class*="close-button"],
+[class*="minimize-button"],
+[class*="zoom-button"],
+[class*="window-controls"],
+[id*="close"],
+[id*="minimize"],
+[id*="zoom"],
+[id*="maximize"] {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+
+/* 隐藏可能的系统级窗口控制元素 */
+div[style*="position: absolute"][style*="top: 0"][style*="left: 0"],
+div[style*="position: fixed"][style*="top: 0"][style*="left: 0"] {
+    display: none !important;
+}
+
+/* 确保预览容器占满整个窗口 */
+html, body {
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+}
+
+.preview-container {
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
 .preview-container {
     width: 100vw;
     height: 100vh;
@@ -34,31 +80,18 @@ body {
     padding: 20px;
     position: relative;
     overflow: hidden;
+    /* 初始状态：完全隐藏，等待窗口动画完成后显示 */
+    opacity: 0;
+    transform: scale(1); /* 保持正常尺寸 */
+    transition: opacity 0.15s ease-out; /* 只有透明度过渡 */
 }
 
-/* 加载状态 */
-.loading {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    height: 100%;
-    color: rgba(0, 0, 0, 0.7);
+/* 内容显示状态 */
+.content.visible {
+    opacity: 1;
 }
 
-.spinner {
-    width: 32px;
-    height: 32px;
-    border: 3px solid rgba(0, 0, 0, 0.1);
-    border-top: 3px solid rgba(0, 0, 0, 0.6);
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-}
 
-@keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
 
 /* 错误状态 */
 .error {
@@ -151,24 +184,28 @@ body {
     -webkit-backdrop-filter: blur(10px);
     border: 1px solid rgba(255, 255, 255, 0.2);
     
-    /* 添加逐条出现的动画 */
+    /* 文件项初始状态：隐藏，等待内容区域显示后再动画 */
     opacity: 0;
     transform: translateY(10px);
-    animation: slideInUp 0.3s ease forwards;
+}
+
+/* 当内容区域可见时，文件项开始动画 */
+.content.visible .file-item {
+    animation: slideInUp 0.15s ease forwards;
 }
 
 /* 为每个文件项添加延迟动画 */
-.file-item:nth-child(1) { animation-delay: 0.05s; }
-.file-item:nth-child(2) { animation-delay: 0.1s; }
-.file-item:nth-child(3) { animation-delay: 0.15s; }
-.file-item:nth-child(4) { animation-delay: 0.2s; }
-.file-item:nth-child(5) { animation-delay: 0.25s; }
-.file-item:nth-child(6) { animation-delay: 0.3s; }
-.file-item:nth-child(7) { animation-delay: 0.35s; }
-.file-item:nth-child(8) { animation-delay: 0.4s; }
-.file-item:nth-child(9) { animation-delay: 0.45s; }
-.file-item:nth-child(10) { animation-delay: 0.5s; }
-.file-item:nth-child(n+11) { animation-delay: 0.55s; }
+.content.visible .file-item:nth-child(1) { animation-delay: 0.025s; }
+.content.visible .file-item:nth-child(2) { animation-delay: 0.05s; }
+.content.visible .file-item:nth-child(3) { animation-delay: 0.075s; }
+.content.visible .file-item:nth-child(4) { animation-delay: 0.1s; }
+.content.visible .file-item:nth-child(5) { animation-delay: 0.125s; }
+.content.visible .file-item:nth-child(6) { animation-delay: 0.15s; }
+.content.visible .file-item:nth-child(7) { animation-delay: 0.175s; }
+.content.visible .file-item:nth-child(8) { animation-delay: 0.2s; }
+.content.visible .file-item:nth-child(9) { animation-delay: 0.225s; }
+.content.visible .file-item:nth-child(10) { animation-delay: 0.25s; }
+.content.visible .file-item:nth-child(n+11) { animation-delay: 0.275s; }
 
 @keyframes slideInUp {
     to {

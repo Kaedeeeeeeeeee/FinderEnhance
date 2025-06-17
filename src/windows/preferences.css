@@ -5,71 +5,196 @@
 }
 
 body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-    background: #f5f5f7;
-    color: #1d1d1f;
-    overflow-x: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: transparent;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
 }
 
 .preferences-container {
-    min-height: 100vh;
+    width: 100vw;
+    height: 100vh;
+    position: relative;
+    /* 毛玻璃效果 - 增加不透明度 */
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(25px) saturate(1.8) brightness(1.1);
+    -webkit-backdrop-filter: blur(25px) saturate(1.8) brightness(1.1);
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    border-radius: 12px;
+    box-shadow: 
+        0 8px 32px rgba(0, 0, 0, 0.15),
+        0 2px 8px rgba(0, 0, 0, 0.1),
+        inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+.content {
+    width: 100%;
+    height: 100%;
+    padding: 20px;
+    position: relative;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+/* 自定义滚动条 */
+.content::-webkit-scrollbar {
+    width: 8px;
+}
+
+.content::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.05);
+    border-radius: 4px;
+}
+
+.content::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+    transition: background 0.2s ease;
+}
+
+.content::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.3);
+}
+
+/* macOS窗口控制按钮 */
+.window-controls {
+    position: absolute;
+    top: 12px;
+    left: 12px;
     display: flex;
-    flex-direction: column;
+    gap: 8px;
+    z-index: 1000;
+}
+
+.window-controls button {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 0.5px solid rgba(0, 0, 0, 0.1);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 8px;
+    color: transparent;
+    font-weight: normal;
+    transition: all 0.15s ease;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.close-button {
+    background: #ff5f57;
+}
+
+.minimize-button {
+    background: #ffbd2e;
+}
+
+.zoom-button {
+    background: #28ca42;
+}
+
+.close-button:hover {
+    background: #ff5f57;
+    color: rgba(0, 0, 0, 0.6);
+}
+
+.minimize-button:hover {
+    background: #ffbd2e;
+    color: rgba(0, 0, 0, 0.6);
+}
+
+.zoom-button:hover {
+    background: #28ca42;
+    color: rgba(0, 0, 0, 0.6);
+}
+
+.close-button:hover::before {
+    content: '×';
+    font-size: 8px;
+    line-height: 1;
+}
+
+.minimize-button:hover::before {
+    content: '−';
+    font-size: 8px;
+    line-height: 1;
+}
+
+.zoom-button:hover::before {
+    content: '+';
+    font-size: 8px;
+    line-height: 1;
+}
+
+.window-controls button:active {
+    transform: scale(0.95);
+}
+
+.close-button:active {
+    background: #e04b42;
+}
+
+.minimize-button:active {
+    background: #e6a325;
+}
+
+.zoom-button:active {
+    background: #24b63a;
 }
 
 /* 头部 */
 .header {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    padding: 30px;
     text-align: center;
+    margin-bottom: 30px;
+    padding: 20px 0;
 }
 
 .header h1 {
-    font-size: 28px;
+    font-size: 24px;
     font-weight: 600;
+    color: rgba(0, 0, 0, 0.85);
     margin-bottom: 8px;
 }
 
 .header p {
-    font-size: 16px;
-    opacity: 0.9;
+    font-size: 14px;
+    color: rgba(0, 0, 0, 0.6);
 }
 
-/* 内容区域 */
-.content {
-    flex: 1;
-    padding: 30px;
-    max-width: 600px;
-    margin: 0 auto;
-    width: 100%;
-}
-
+/* 设置区块 */
 .section {
-    background: white;
+    background: rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
     border-radius: 12px;
-    padding: 25px;
-    margin-bottom: 25px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
-    border: 1px solid #e5e5e7;
+    padding: 20px;
+    margin-bottom: 16px;
+    transition: all 0.2s ease;
+}
+
+.section:hover {
+    background: rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.3);
 }
 
 .section h2 {
-    font-size: 20px;
+    font-size: 16px;
     font-weight: 600;
-    margin-bottom: 20px;
-    color: #1d1d1f;
-    display: flex;
-    align-items: center;
-    gap: 8px;
+    color: rgba(0, 0, 0, 0.85);
+    margin-bottom: 16px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.1);
 }
 
 .setting-item {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 15px 0;
-    border-bottom: 1px solid #f0f0f0;
+    padding: 12px 0;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
 }
 
 .setting-item:last-child {
@@ -83,16 +208,16 @@ body {
 
 .setting-info label {
     display: block;
-    font-size: 16px;
+    font-size: 14px;
     font-weight: 500;
-    margin-bottom: 5px;
-    color: #1d1d1f;
+    margin-bottom: 4px;
+    color: rgba(0, 0, 0, 0.85);
     cursor: pointer;
 }
 
 .setting-desc {
-    font-size: 14px;
-    color: #8e8e93;
+    font-size: 12px;
+    color: rgba(0, 0, 0, 0.6);
     line-height: 1.4;
 }
 
@@ -108,193 +233,165 @@ input[type="checkbox"] {
 .toggle {
     position: relative;
     display: inline-block;
-    width: 50px;
-    height: 28px;
-    background: #ccc;
-    border-radius: 14px;
+    width: 44px;
+    height: 24px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 12px;
     cursor: pointer;
     transition: all 0.3s ease;
+    border: 1px solid rgba(0, 0, 0, 0.1);
 }
 
 .toggle::after {
     content: '';
     position: absolute;
-    width: 24px;
-    height: 24px;
+    width: 20px;
+    height: 20px;
     border-radius: 50%;
     background: white;
-    top: 2px;
-    left: 2px;
+    top: 1px;
+    left: 1px;
     transition: all 0.3s ease;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 input[type="checkbox"]:checked + .toggle {
-    background: #007aff;
+    background: rgba(0, 122, 255, 0.8);
+    border-color: rgba(0, 122, 255, 0.3);
 }
 
 input[type="checkbox"]:checked + .toggle::after {
-    left: 24px;
+    left: 21px;
 }
 
 /* 选择框样式 */
 select {
-    background: white;
-    border: 1px solid #d1d1d6;
+    background: rgba(255, 255, 255, 0.8);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(0, 0, 0, 0.1);
     border-radius: 8px;
     padding: 8px 12px;
-    font-size: 14px;
-    color: #1d1d1f;
+    font-size: 12px;
+    color: rgba(0, 0, 0, 0.85);
     cursor: pointer;
     outline: none;
-    min-width: 150px;
-    transition: border-color 0.2s ease;
+    min-width: 120px;
+    transition: all 0.2s ease;
 }
 
 select:focus {
-    border-color: #007aff;
+    border-color: rgba(0, 122, 255, 0.5);
+    background: rgba(255, 255, 255, 0.9);
 }
 
 /* 底部按钮区域 */
 .footer {
-    background: white;
-    border-top: 1px solid #e5e5e7;
-    padding: 20px 30px;
     display: flex;
     justify-content: space-between;
     align-items: center;
+    padding-top: 20px;
+    margin-top: 20px;
+    border-top: 1px solid rgba(0, 0, 0, 0.1);
 }
 
 .footer-actions {
     display: flex;
-    gap: 12px;
+    gap: 10px;
 }
 
 .btn {
-    padding: 10px 20px;
+    padding: 8px 16px;
     border-radius: 8px;
-    font-size: 14px;
+    font-size: 12px;
     font-weight: 500;
     cursor: pointer;
     border: none;
     transition: all 0.2s ease;
-    min-width: 80px;
+    min-width: 70px;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
 }
 
 .btn-primary {
-    background: #007aff;
+    background: rgba(0, 122, 255, 0.8);
     color: white;
+    border: 1px solid rgba(0, 122, 255, 0.3);
 }
 
 .btn-primary:hover {
-    background: #0056cc;
-}
-
-.btn-primary:active {
-    background: #004299;
+    background: rgba(0, 122, 255, 0.9);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3);
 }
 
 .btn-secondary {
-    background: #f6f6f6;
-    color: #1d1d1f;
-    border: 1px solid #d1d1d6;
+    background: rgba(255, 255, 255, 0.3);
+    color: rgba(0, 0, 0, 0.8);
+    border: 1px solid rgba(0, 0, 0, 0.1);
 }
 
 .btn-secondary:hover {
-    background: #e5e5e7;
+    background: rgba(255, 255, 255, 0.4);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
-.btn-secondary:active {
-    background: #d1d1d6;
-}
-
-/* 响应式设计 */
-@media (max-width: 600px) {
-    .content {
-        padding: 20px;
+/* 深色模式适配 */
+@media (prefers-color-scheme: dark) {
+    .preferences-container {
+        background: rgba(0, 0, 0, 0.85);
+        border-color: rgba(255, 255, 255, 0.2);
     }
     
     .section {
-        padding: 20px;
-        margin-bottom: 20px;
+        background: rgba(0, 0, 0, 0.15);
+        border-color: rgba(255, 255, 255, 0.1);
     }
     
-    .setting-item {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 15px;
+    .section:hover {
+        background: rgba(0, 0, 0, 0.2);
+        border-color: rgba(255, 255, 255, 0.15);
     }
     
-    .setting-info {
-        padding-right: 0;
+    .header h1, .section h2, .setting-info label {
+        color: rgba(255, 255, 255, 0.9);
     }
     
-    .footer {
-        flex-direction: column;
-        gap: 15px;
-        padding: 20px;
+    .header p, .setting-desc {
+        color: rgba(255, 255, 255, 0.6);
     }
     
-    .footer-actions {
-        width: 100%;
-        justify-content: center;
+    select {
+        background: rgba(0, 0, 0, 0.3);
+        color: rgba(255, 255, 255, 0.9);
+        border-color: rgba(255, 255, 255, 0.1);
     }
     
-    .btn {
-        flex: 1;
-        max-width: 120px;
+    .btn-secondary {
+        background: rgba(0, 0, 0, 0.3);
+        color: rgba(255, 255, 255, 0.9);
+        border-color: rgba(255, 255, 255, 0.1);
     }
 }
 
-/* 动画效果 */
-.section {
-    animation: fadeInUp 0.4s ease-out;
-}
-
-@keyframes fadeInUp {
-    from {
-        opacity: 0;
-        transform: translateY(20px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-/* 滚动条样式 */
-::-webkit-scrollbar {
-    width: 8px;
-}
-
-::-webkit-scrollbar-track {
-    background: #f1f1f1;
-}
-
-::-webkit-scrollbar-thumb {
-    background: #c1c1c1;
-    border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-    background: #a8a8a8;
-}
-
-/* 提示消息样式 */
+/* 通知样式 */
 .notification {
     position: fixed;
     top: 20px;
     right: 20px;
-    background: #34c759;
+    background: rgba(52, 199, 89, 0.9);
     color: white;
     padding: 12px 20px;
     border-radius: 8px;
-    font-size: 14px;
+    font-size: 12px;
     font-weight: 500;
     box-shadow: 0 4px 15px rgba(52, 199, 89, 0.3);
-    z-index: 1000;
+    z-index: 2000;
     transform: translateX(100%);
     transition: transform 0.3s ease;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
 }
 
 .notification.show {
@@ -302,6 +399,6 @@ select:focus {
 }
 
 .notification.error {
-    background: #ff3b30;
+    background: rgba(255, 59, 48, 0.9);
     box-shadow: 0 4px 15px rgba(255, 59, 48, 0.3);
 } 

@@ -14,7 +14,6 @@ class PreviewWindow {
   initializeElements() {
     // 获取DOM元素 - 只保留极简界面需要的元素
     this.elements = {
-      loading: document.getElementById('loading'),
       error: document.getElementById('error'),
       fileList: document.getElementById('fileList'),
       emptyState: document.getElementById('emptyState')
@@ -27,6 +26,12 @@ class PreviewWindow {
       this.loadPreview(filePath);
     });
 
+    // 窗口动画完成信号
+    ipcRenderer.on('window-animation-complete', () => {
+      console.log('🎬 收到窗口动画完成信号');
+      this.showContent();
+    });
+
     // 键盘快捷键
     document.addEventListener('keydown', (e) => {
       this.handleKeyDown(e);
@@ -35,7 +40,8 @@ class PreviewWindow {
 
   async loadPreview(filePath) {
     this.currentPath = filePath;
-    this.showLoading();
+    // 直接隐藏所有状态，等待数据加载完成
+    this.hideAllStates();
 
     try {
       const data = await ipcRenderer.invoke('get-file-preview', filePath);
@@ -86,11 +92,6 @@ class PreviewWindow {
     this.elements.fileList.innerHTML = listHtml;
   }
 
-  showLoading() {
-    this.hideAllStates();
-    this.elements.loading.style.display = 'flex';
-  }
-
   showError(message) {
     this.hideAllStates();
     this.elements.error.style.display = 'flex';
@@ -111,7 +112,6 @@ class PreviewWindow {
   }
 
   hideAllStates() {
-    this.elements.loading.style.display = 'none';
     this.elements.error.style.display = 'none';
     this.elements.fileList.style.display = 'none';
     this.elements.emptyState.style.display = 'none';
@@ -210,12 +210,37 @@ class PreviewWindow {
     // 空格键关闭窗口
     if (e.code === 'Space') {
       e.preventDefault();
-      window.close();
+      this.closeWithAnimation();
     }
     // ESC键关闭窗口
     else if (e.code === 'Escape') {
       e.preventDefault();
-      window.close();
+      this.closeWithAnimation();
+    }
+  }
+
+  closeWithAnimation() {
+    // 先隐藏内容
+    this.hideContent();
+    // 直接关闭窗口，让主进程处理关闭动画
+    window.close();
+  }
+
+  // 🎬 显示内容 - 窗口动画完成后调用
+  showContent() {
+    const content = document.querySelector('.content');
+    if (content) {
+      content.classList.add('visible');
+      console.log('🎬 内容区域显示完成');
+    }
+  }
+
+  // 🎬 隐藏内容 - 关闭时调用
+  hideContent() {
+    const content = document.querySelector('.content');
+    if (content) {
+      content.classList.remove('visible');
+      console.log('🎬 内容区域隐藏完成');
     }
   }
 }

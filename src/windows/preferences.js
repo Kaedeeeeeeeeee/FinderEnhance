@@ -17,8 +17,6 @@ class PreferencesWindow {
       showHiddenFiles: false,
       enableCutShortcut: true,
       showCutFeedback: true,
-      defaultView: 'list',
-      previewWindowSize: 'medium',
       autoStart: false,
       checkUpdates: true
     };
@@ -31,14 +29,15 @@ class PreferencesWindow {
       showHiddenFiles: document.getElementById('showHiddenFiles'),
       enableCutShortcut: document.getElementById('enableCutShortcut'),
       showCutFeedback: document.getElementById('showCutFeedback'),
-      defaultView: document.getElementById('defaultView'),
-      previewWindowSize: document.getElementById('previewWindowSize'),
       autoStart: document.getElementById('autoStart'),
       checkUpdates: document.getElementById('checkUpdates'),
       
       saveBtn: document.getElementById('saveBtn'),
       cancelBtn: document.getElementById('cancelBtn'),
-      resetBtn: document.getElementById('resetBtn')
+      resetBtn: document.getElementById('resetBtn'),
+      closeBtn: document.getElementById('closeBtn'),
+      minimizeBtn: document.getElementById('minimizeBtn'),
+      zoomBtn: document.getElementById('zoomBtn')
     };
   }
 
@@ -51,6 +50,26 @@ class PreferencesWindow {
     // 取消
     this.elements.cancelBtn.addEventListener('click', () => {
       window.close();
+    });
+
+    // 关闭按钮
+    this.elements.closeBtn.addEventListener('click', () => {
+      window.close();
+    });
+
+    // 最小化按钮
+    this.elements.minimizeBtn.addEventListener('click', () => {
+      // 通过IPC与主进程通信来最小化窗口
+      ipcRenderer.invoke('minimize-window').catch(() => {
+        // 如果IPC失败，暂时不做处理
+        console.log('最小化功能暂不可用');
+      });
+    });
+
+    // 缩放按钮（无功能，仅装饰）
+    this.elements.zoomBtn.addEventListener('click', () => {
+      // macOS中缩放按钮通常用于全屏，这里暂不实现
+      console.log('缩放按钮被点击');
     });
 
     // 重置默认

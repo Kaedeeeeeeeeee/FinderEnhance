@@ -24,6 +24,7 @@ class FinderEnhanceApp {
     this.lastSpaceKeyTime = 0;
     this.spaceKeyThrottle = 50; // 50ms 防抖
     this.isForwarding = false; // 防止系统快捷键转发循环
+    this.isSimulating = false; // 防止快捷键模拟循环
     this.spaceKeyRegistered = false; // 记录空格键是否已注册
     
     this.settings = {
@@ -124,25 +125,49 @@ class FinderEnhanceApp {
   }
 
   createTray() {
-    // 使用系统默认模板图标
     console.log('创建托盘图标...');
     try {
       const { nativeImage } = require('electron');
+      const path = require('path');
       
-      // 创建一个简单的16x16黑色方块作为托盘图标
-      const size = 16;
-      const buffer = Buffer.alloc(size * size * 4); // RGBA
+      // 尝试加载自定义图标
+      const iconPath = path.join(__dirname, '..', 'assets', 'icon4.png');
+      console.log('尝试加载图标:', iconPath);
       
-      // 填充为黑色
-      for (let i = 0; i < buffer.length; i += 4) {
-        buffer[i] = 0;     // R
-        buffer[i + 1] = 0; // G  
-        buffer[i + 2] = 0; // B
-        buffer[i + 3] = 255; // A (不透明)
+      let icon;
+      try {
+        // 加载并调整图标大小适合托盘
+        icon = nativeImage.createFromPath(iconPath);
+        
+        if (icon.isEmpty()) {
+          throw new Error('图标文件为空或无法读取');
+        }
+        
+        // 调整图标大小为16x16（macOS托盘标准大小）
+        icon = icon.resize({ width: 16, height: 16 });
+        
+        // 设置为模板图标，这样会自动适应系统主题（深色/浅色模式）
+        icon.setTemplateImage(true);
+        
+        console.log('✅ 成功加载自定义图标');
+      } catch (iconError) {
+        console.log('❌ 无法加载自定义图标，使用默认图标:', iconError.message);
+        
+        // 回退到默认的黑色方块图标
+        const size = 16;
+        const buffer = Buffer.alloc(size * size * 4); // RGBA
+        
+        // 填充为黑色
+        for (let i = 0; i < buffer.length; i += 4) {
+          buffer[i] = 0;     // R
+          buffer[i + 1] = 0; // G  
+          buffer[i + 2] = 0; // B
+          buffer[i + 3] = 255; // A (不透明)
+        }
+        
+        icon = nativeImage.createFromBuffer(buffer, { width: size, height: size });
+        icon.setTemplateImage(true);
       }
-      
-      const icon = nativeImage.createFromBuffer(buffer, { width: size, height: size });
-      icon.setTemplateImage(true); // 模板图标会自动适应系统主题
       
       this.tray = new Tray(icon);
       console.log('托盘图标创建成功');
@@ -174,21 +199,21 @@ class FinderEnhanceApp {
       },
       { type: 'separator' },
       {
-        label: '预览功能: 开启 (Cmd+Shift+P)',
+        label: '预览功能: 开启 (Space)',
         type: 'normal',
         click: () => {
           this.showStatus();
         }
       },
       {
-        label: '剪切: Cmd+Shift+X',
+        label: '剪切: Cmd+X',
         type: 'normal',
         click: () => {
           this.showStatus();
         }
       },
       {
-        label: '粘贴: Cmd+Shift+V',
+        label: '粘贴: Cmd+V',
         type: 'normal',
         click: () => {
           this.showStatus();
@@ -338,28 +363,31 @@ class FinderEnhanceApp {
 
   // 💡 注册完全接管的优化快捷键
   registerOptimizedShortcuts() {
-    console.log('🎯 注册完全接管快捷键...');
+    console.log('🎯 注册智能快捷键...');
     
-    // Cmd+X 剪切快捷键
+    // 🔄 改进策略：只在真正需要时才拦截快捷键
+    // Cmd+X 剪切快捷键 - 只在Finder中且有选中文件时拦截
     const cutRegistered = globalShortcut.register('CommandOrControl+X', () => {
-      if (this.cachedFinderActive) {
-        console.log('✂️ Cmd+X: 在Finder中，处理剪切');
+      if (this.cachedFinderActive && this.cachedSelectedFile) {
+        console.log('✂️ Cmd+X: 在Finder中且有选中文件，处理剪切');
         this.handleCutShortcut();
       } else {
-        console.log('✂️ Cmd+X: 不在Finder中，转发系统快捷键');
-        this.forwardSystemShortcut('x');
+        console.log('✂️ Cmd+X: 条件不满足，使用系统原生剪切');
+        // 🚫 不要拦截，让系统处理
+        this.simulateSystemShortcut('CommandOrControl+X');
       }
     });
     console.log('Cmd+X 快捷键注册:', cutRegistered ? '成功' : '失败');
 
-    // Cmd+V 粘贴快捷键
+    // Cmd+V 粘贴快捷键 - 只在Finder中且有我们剪切的文件时拦截
     const pasteRegistered = globalShortcut.register('CommandOrControl+V', () => {
       if (this.cachedFinderActive && this.clipboardService.hasCutFiles()) {
-        console.log('📋 Cmd+V: 在Finder中且有剪切文件，处理粘贴');
+        console.log('📋 Cmd+V: 在Finder中且有我们剪切的文件，处理粘贴');
         this.handlePasteShortcut();
       } else {
-        console.log('📋 Cmd+V: 条件不满足，转发系统快捷键');
-        this.forwardSystemShortcut('v');
+        console.log('📋 Cmd+V: 条件不满足，使用系统原生粘贴');
+        // 🚫 不要拦截，让系统处理
+        this.simulateSystemShortcut('CommandOrControl+V');
       }
     });
     console.log('Cmd+V 快捷键注册:', pasteRegistered ? '成功' : '失败');
@@ -374,7 +402,72 @@ class FinderEnhanceApp {
     });
     console.log('Cmd+Shift+P 快捷键注册:', backupRegistered ? '成功' : '失败');
     
-    console.log('✅ 完全接管快捷键注册完成');
+    console.log('✅ 智能快捷键注册完成');
+  }
+
+  // 🔄 改进的系统快捷键模拟方法
+  simulateSystemShortcut(shortcut) {
+    // 防止重复调用
+    if (this.isSimulating) {
+      return;
+    }
+    
+    this.isSimulating = true;
+    
+    // 临时注销快捷键
+    globalShortcut.unregister(shortcut);
+    
+    // 立即模拟按键
+    const { exec } = require('child_process');
+    
+    if (shortcut === 'CommandOrControl+X') {
+      exec(`osascript -e 'tell application "System Events" to keystroke "x" using command down'`, (error) => {
+        if (error) {
+          console.log('模拟Cmd+X失败:', error.message);
+        }
+        // 短暂延迟后重新注册
+        setTimeout(() => {
+          this.reregisterShortcut('CommandOrControl+X');
+          this.isSimulating = false;
+        }, 100);
+      });
+    } else if (shortcut === 'CommandOrControl+V') {
+      exec(`osascript -e 'tell application "System Events" to keystroke "v" using command down'`, (error) => {
+        if (error) {
+          console.log('模拟Cmd+V失败:', error.message);
+        }
+        // 短暂延迟后重新注册
+        setTimeout(() => {
+          this.reregisterShortcut('CommandOrControl+V');
+          this.isSimulating = false;
+        }, 100);
+      });
+    }
+  }
+
+  // 重新注册单个快捷键
+  reregisterShortcut(shortcut) {
+    if (shortcut === 'CommandOrControl+X') {
+      globalShortcut.register('CommandOrControl+X', () => {
+        if (this.cachedFinderActive && this.cachedSelectedFile) {
+          console.log('✂️ Cmd+X: 在Finder中且有选中文件，处理剪切');
+          this.handleCutShortcut();
+        } else {
+          console.log('✂️ Cmd+X: 条件不满足，使用系统原生剪切');
+          this.simulateSystemShortcut('CommandOrControl+X');
+        }
+      });
+    } else if (shortcut === 'CommandOrControl+V') {
+      globalShortcut.register('CommandOrControl+V', () => {
+        if (this.cachedFinderActive && this.clipboardService.hasCutFiles()) {
+          console.log('📋 Cmd+V: 在Finder中且有我们剪切的文件，处理粘贴');
+          this.handlePasteShortcut();
+        } else {
+          console.log('📋 Cmd+V: 条件不满足，使用系统原生粘贴');
+          this.simulateSystemShortcut('CommandOrControl+V');
+        }
+      });
+    }
   }
 
   // 💡 空格键智能管理 - 按需注册/注销
@@ -475,81 +568,7 @@ class FinderEnhanceApp {
     }
   }
 
-  // 💡 简化的快捷键转发 - 临时注销让系统自然处理
-  forwardSystemShortcut(key) {
-    // 防止重复转发
-    if (this.isForwarding) {
-      return;
-    }
-    
-    let shortcutKey;
-    
-    if (key === 'space') {
-      shortcutKey = 'Space';
-    } else if (key === 'x') {
-      shortcutKey = 'CommandOrControl+X';
-    } else if (key === 'v') {
-      shortcutKey = 'CommandOrControl+V';
-    } else {
-      return;
-    }
-    
-    console.log(`🔄 转发快捷键: ${key} (临时注销方式)`);
-    
-    // 标记正在转发，防止循环
-    this.isForwarding = true;
-    
-    // 临时注销快捷键，让系统自然处理下一个按键
-    globalShortcut.unregister(shortcutKey);
-    
-    // 短暂延迟后重新注册，让用户的下一个按键能被系统接收
-    setTimeout(() => {
-      this.reregisterSingleShortcut(key, shortcutKey);
-      this.isForwarding = false;
-    }, 200); // 稍微增加延迟，确保用户按键被系统处理
-  }
 
-  // 💡 重新注册单个快捷键
-  reregisterSingleShortcut(key, shortcutKey) {
-    try {
-      if (key === 'space') {
-        const spaceRegistered = globalShortcut.register('Space', async () => {
-          await this.handleSpaceKeyFullTakeover();
-        });
-        if (!spaceRegistered) {
-          console.log('重新注册空格键失败');
-        }
-      } else if (key === 'x') {
-        const cutRegistered = globalShortcut.register('CommandOrControl+X', () => {
-          if (this.cachedFinderActive) {
-            console.log('✂️ Cmd+X: 在Finder中，处理剪切');
-            this.handleCutShortcut();
-          } else {
-            console.log('✂️ Cmd+X: 不在Finder中，转发系统快捷键');
-            this.forwardSystemShortcut('x');
-          }
-        });
-        if (!cutRegistered) {
-          console.log('重新注册Cmd+X失败');
-        }
-      } else if (key === 'v') {
-        const pasteRegistered = globalShortcut.register('CommandOrControl+V', () => {
-          if (this.cachedFinderActive && this.clipboardService.hasCutFiles()) {
-            console.log('📋 Cmd+V: 在Finder中且有剪切文件，处理粘贴');
-            this.handlePasteShortcut();
-          } else {
-            console.log('📋 Cmd+V: 条件不满足，转发系统快捷键');
-            this.forwardSystemShortcut('v');
-          }
-        });
-        if (!pasteRegistered) {
-          console.log('重新注册Cmd+V失败');
-        }
-      }
-    } catch (error) {
-      console.log(`重新注册快捷键 ${key} 时出错:`, error.message);
-    }
-  }
 
   async handleSpaceKeyPress(filePath = null) {
     try {
@@ -765,7 +784,7 @@ class FinderEnhanceApp {
     const initialY = iconPosition.y - initialSize / 2;
 
     this.previewWindow = new BrowserWindow({
-      width: initialSize,
+      width: initialSize,  // 🔄 回到小窗口开始，但加强保护
       height: initialSize,
       x: initialX,
       y: initialY,
@@ -773,16 +792,46 @@ class FinderEnhanceApp {
       frame: false, // 移除窗口边框和标题栏
       show: false,
       transparent: true, // 启用透明背景支持毛玻璃效果
-      opacity: 1,
+      opacity: 0, // 🔄 初始完全透明，避免闪烁
       alwaysOnTop: true, // 保持在最前面
       skipTaskbar: true, // 不在任务栏显示
       vibrancy: 'fullscreen-ui', // macOS毛玻璃效果
       visualEffectState: 'active', // 确保毛玻璃效果始终激活
       backgroundMaterial: 'acrylic', // Windows毛玻璃效果
+      // 🚫 额外的窗口设置来避免调试元素
+      titleBarStyle: 'hidden', // 隐藏标题栏
+      hasShadow: false, // 移除窗口阴影（可能导致边框显示）
+      thickFrame: false, // 移除厚边框
+      // 🚫 更严格的窗口控制
+      minimizable: false,
+      maximizable: false,
+      closable: false, // 完全禁用关闭按钮
+      focusable: true,
+      fullscreenable: false, // 禁用全屏按钮
       webPreferences: {
         nodeIntegration: true,
         contextIsolation: false,
-        backgroundThrottling: false // 防止背景节流影响毛玻璃效果
+        backgroundThrottling: false, // 防止背景节流影响毛玻璃效果
+        // 💡 硬件加速和性能优化
+        hardwareAcceleration: true, // 启用硬件加速
+        enableRemoteModule: false, // 禁用远程模块提升性能
+        webSecurity: false, // 允许本地文件访问
+        allowRunningInsecureContent: false,
+        experimentalFeatures: true, // 启用实验性功能
+        // 💡 渲染优化
+        offscreen: false, // 确保使用GPU渲染
+        paintWhenInitiallyHidden: false, // 初始隐藏时不渲染
+        // 💡 内存和CPU优化
+        v8CacheOptions: 'code', // V8代码缓存
+        enableWebSQL: false, // 禁用WebSQL
+        enableBlinkFeatures: 'CSSBackdropFilter', // 启用CSS backdrop-filter
+        // 🚫 明确禁用开发者工具和调试功能
+        devTools: false,
+        enableRemoteModule: false,
+        sandbox: false, // 禁用沙盒模式避免额外窗口
+        partition: null, // 不使用独立分区
+        preload: null, // 不使用预加载脚本
+        additionalArguments: ['--disable-dev-shm-usage', '--disable-web-security']
       }
     });
 
@@ -790,16 +839,127 @@ class FinderEnhanceApp {
     
     // 发送文件路径到渲染进程
     this.previewWindow.webContents.once('dom-ready', () => {
+      // 🚫 强制关闭任何可能的子窗口
+      try {
+        const allWindows = BrowserWindow.getAllWindows();
+        allWindows.forEach(win => {
+          if (win !== this.previewWindow && win.getParentWindow() === this.previewWindow) {
+            win.close();
+          }
+        });
+      } catch (error) {
+        // 忽略错误
+      }
+      
       this.previewWindow.webContents.send('show-preview', filePath);
+      
+      // 🚫 在显示前强制隐藏所有可能的子元素
+      this.previewWindow.webContents.executeJavaScript(`
+        // 隐藏body直到动画开始
+        document.body.style.visibility = 'hidden';
+        document.body.style.opacity = '0';
+        
+        // 立即隐藏任何可能的窗口控制按钮
+        const hideWindowControls = () => {
+          const selectors = [
+            '.close-button', '.minimize-button', '.zoom-button', '.window-controls',
+            'button[class*="close"]', 'button[class*="minimize"]', 'button[class*="zoom"]',
+            '[class*="close-button"]', '[class*="minimize-button"]', '[class*="zoom-button"]',
+            '[id*="close"]', '[id*="minimize"]', '[id*="zoom"]'
+          ];
+          
+          selectors.forEach(selector => {
+            const elements = document.querySelectorAll(selector);
+            elements.forEach(el => {
+              el.style.display = 'none';
+              el.style.visibility = 'hidden';
+              el.style.opacity = '0';
+              el.style.pointerEvents = 'none';
+            });
+          });
+          
+          // 隐藏左上角区域的任何元素
+          const topLeftElements = document.querySelectorAll('*');
+          topLeftElements.forEach(el => {
+            const style = window.getComputedStyle(el);
+            if (style.position === 'absolute' || style.position === 'fixed') {
+              if (style.top === '0px' && style.left === '0px' && el.className !== 'preview-container') {
+                el.style.display = 'none';
+              }
+            }
+          });
+        };
+        
+        // 立即执行一次
+        hideWindowControls();
+        
+        // 设置定时器持续监控
+        setInterval(hideWindowControls, 100);
+      `).catch(() => {});
       
       // 显示窗口并开始动画
       this.previewWindow.show();
-      this.animateWindowOpen(initialX, initialY, initialSize, finalX, finalY, finalWidth, finalHeight);
+      
+      // 短暂延迟后开始动画，确保窗口完全初始化
+      setTimeout(() => {
+        this.animateWindowOpen(iconPosition.x - 25, iconPosition.y - 25, 50, finalX, finalY, finalWidth, finalHeight);
+      }, 5);
     });
 
     this.previewWindow.on('closed', () => {
       this.previewWindow = null;
       console.log('预览窗口已关闭');
+    });
+
+    // 🚫 阻止开发者工具打开
+    this.previewWindow.webContents.on('devtools-opened', () => {
+      this.previewWindow.webContents.closeDevTools();
+    });
+
+    // 🚫 强制隐藏所有可能的调试窗口和子视图
+    this.previewWindow.webContents.on('did-finish-load', () => {
+      // 注入CSS来隐藏任何可能的调试元素和窗口控制按钮
+      this.previewWindow.webContents.insertCSS(`
+        /* 隐藏所有可能的调试元素 */
+        [class*="devtools"], [id*="devtools"], [class*="debug"], [id*="debug"] {
+          display: none !important;
+          visibility: hidden !important;
+          opacity: 0 !important;
+        }
+        
+        /* 隐藏所有窗口控制按钮 */
+        .close-button, .minimize-button, .zoom-button, .window-controls,
+        button[class*="close"], button[class*="minimize"], button[class*="zoom"],
+        [class*="close-button"], [class*="minimize-button"], [class*="zoom-button"],
+        [id*="close"], [id*="minimize"], [id*="zoom"] {
+          display: none !important;
+          visibility: hidden !important;
+          opacity: 0 !important;
+          pointer-events: none !important;
+        }
+        
+        /* 隐藏可能的 Electron 内部元素 */
+        webview, object, embed {
+          display: none !important;
+        }
+        
+        /* 隐藏可能的系统级窗口控制元素 */
+        div[style*="position: absolute"][style*="top: 0"][style*="left: 0"],
+        div[style*="position: fixed"][style*="top: 0"][style*="left: 0"] {
+          display: none !important;
+        }
+        
+        /* 确保只有我们的内容可见 */
+        body > *:not(.preview-container) {
+          display: none !important;
+        }
+        
+        /* 强制隐藏左上角区域的任何元素 */
+        *[style*="top: 0"][style*="left: 0"],
+        *[style*="position: absolute"][style*="z-index"] {
+          display: none !important;
+        }
+      `);
     });
     
     // 添加窗口失去焦点时的处理（可选）
@@ -874,55 +1034,196 @@ class FinderEnhanceApp {
     });
   }
 
+  // 🎬 改进的CSS变换动画 - 更稳定的版本
+  animateWindowOpenCSS(iconX, iconY, finalX, finalY, finalWidth, finalHeight) {
+    const duration = 80;
+    
+    // 计算从图标位置到窗口中心的变换
+    const windowCenterX = finalX + finalWidth / 2;
+    const windowCenterY = finalY + finalHeight / 2;
+    const translateX = iconX - windowCenterX;
+    const translateY = iconY - windowCenterY;
+    const initialScale = 0.1;
+    
+    // 设置窗口透明度
+    this.previewWindow.setOpacity(1);
+    
+    // 等待DOM准备好后再执行动画
+    this.previewWindow.webContents.executeJavaScript(`
+      // 确保DOM已加载
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', startAnimation);
+      } else {
+        startAnimation();
+      }
+      
+      function startAnimation() {
+        const container = document.querySelector('.preview-container');
+        if (!container) {
+          console.error('找不到 .preview-container 元素');
+          return;
+        }
+        
+        // 清除可能存在的动画类
+        container.classList.remove('animate-in', 'animate-out');
+        
+        // 设置初始状态
+        container.style.transform = 'translate(${translateX}px, ${translateY}px) scale(${initialScale})';
+        container.style.opacity = '0';
+        container.style.transition = 'all ${duration}ms cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+        
+        // 强制重绘
+        container.offsetHeight;
+        
+        // 开始动画到最终状态
+        setTimeout(() => {
+          container.style.transform = 'translate(0, 0) scale(1)';
+          container.style.opacity = '1';
+        }, 10);
+      }
+    `).then(() => {
+      // 动画完成后发送信号
+      setTimeout(() => {
+        if (this.previewWindow && !this.previewWindow.isDestroyed()) {
+          this.previewWindow.webContents.send('window-animation-complete');
+          console.log('🎬 预览窗口打开动画完成 (CSS变换)');
+        }
+      }, duration + 20);
+    }).catch(error => {
+      console.error('CSS动画执行失败:', error);
+      // 回退到原始动画方法
+      this.animateWindowOpen(iconX - 25, iconY - 25, 50, finalX, finalY, finalWidth, finalHeight);
+    });
+  }
+
+  // 🎬 超稳定动画 - 打开窗口 (备用方法)
   animateWindowOpen(startX, startY, startSize, endX, endY, endWidth, endHeight) {
-    const steps = 20; // 减少步数，加快动画
-    const duration = 250; // 减少时长，让动画更快
+    const duration = 80; // 加速到0.15秒，更快响应
+    const steps = 8; // 减少步数保持流畅
     const stepDuration = duration / steps;
+    const startTime = performance.now();
+    
+    // 💡 简单但稳定的缓动函数
+    const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
     
     let currentStep = 0;
+    let animationId;
     
     const animate = () => {
       if (!this.previewWindow || this.previewWindow.isDestroyed()) {
+        if (animationId) clearTimeout(animationId);
         return;
       }
       
       currentStep++;
       const progress = currentStep / steps;
+      const eased = easeOutCubic(progress);
       
-      // 使用平滑的ease-out缓动，去除弹性效果避免颤抖
-      const eased = 1 - Math.pow(1 - progress, 3.5);
+      // 🚫 在第一帧恢复body可见性
+      if (currentStep === 1) {
+        this.previewWindow.webContents.executeJavaScript(`
+          document.body.style.visibility = 'visible';
+          document.body.style.opacity = '1';
+        `).catch(() => {});
+      }
       
-      // 计算当前位置和尺寸
-      const currentX = Math.round(startX + (endX - startX) * eased);
-      const currentY = Math.round(startY + (endY - startY) * eased);
-      const currentWidth = Math.round(startSize + (endWidth - startSize) * eased);
-      const currentHeight = Math.round(startSize + (endHeight - startSize) * eased);
+      // 💡 简单直接的计算 - 避免复杂运算
+      const currentX = startX + (endX - startX) * eased;
+      const currentY = startY + (endY - startY) * eased;
+      const currentWidth = startSize + (endWidth - startSize) * eased;
+      const currentHeight = startSize + (endHeight - startSize) * eased;
       
-      // 应用变换（保持完全不透明）
-      this.previewWindow.setBounds({
-        x: currentX,
-        y: currentY,
-        width: currentWidth,
-        height: currentHeight
-      });
+      // 💡 透明度动画
+      const opacity = Math.min(1, progress * 1.8);
+      
+      // 💡 一次性更新所有属性
+      try {
+        this.previewWindow.setBounds({
+          x: Math.round(currentX),
+          y: Math.round(currentY),
+          width: Math.round(currentWidth),
+          height: Math.round(currentHeight)
+        });
+        this.previewWindow.setOpacity(opacity);
+      } catch (error) {
+        // 静默处理窗口更新错误
+        return;
+      }
       
       if (currentStep < steps) {
-        setTimeout(animate, stepDuration);
+        // 💡 固定间隔，确保稳定性
+        animationId = setTimeout(animate, stepDuration);
       } else {
         // 动画完成，确保最终状态精确
-        this.previewWindow.setBounds({
-          x: endX,
-          y: endY,
-          width: endWidth,
-          height: endHeight
-        });
-        this.previewWindow.setOpacity(1);
-        this.previewWindow.focus();
-        console.log('预览窗口打开动画完成');
+        try {
+          this.previewWindow.setBounds({
+            x: endX,
+            y: endY,
+            width: endWidth,
+            height: endHeight
+          });
+          this.previewWindow.setOpacity(1);
+          this.previewWindow.focus();
+          
+          // 🎬 窗口动画完成，通知渲染进程显示内容
+          console.log('🎬 发送窗口动画完成信号');
+          // 确保渲染进程准备好接收信号
+          setTimeout(() => {
+            if (this.previewWindow && !this.previewWindow.isDestroyed()) {
+              this.previewWindow.webContents.send('window-animation-complete');
+            }
+          }, 10);
+        } catch (error) {
+          // 静默处理
+        }
+        console.log('🎬 预览窗口打开动画完成 (超稳定)');
       }
     };
     
+    // 立即开始动画
     animate();
+  }
+
+  // 🎬 超稳定动画 - 关闭窗口
+  async animateWindowCloseCSS() {
+    if (!this.previewWindow || this.previewWindow.isDestroyed()) {
+      return;
+    }
+
+    const duration = 60;
+    
+    try {
+      // 执行关闭动画
+      await this.previewWindow.webContents.executeJavaScript(`
+        const container = document.querySelector('.preview-container');
+        if (!container) {
+          console.error('找不到 .preview-container 元素');
+          return false;
+        }
+        
+        // 设置关闭动画
+        container.style.transition = 'all ${duration}ms cubic-bezier(0.55, 0.055, 0.675, 0.19)';
+        container.style.transform = 'scale(0.1)';
+        container.style.opacity = '0';
+        
+        return true;
+      `);
+      
+      // 等待动画完成后关闭窗口
+      setTimeout(() => {
+        if (this.previewWindow && !this.previewWindow.isDestroyed()) {
+          this.previewWindow.close();
+          console.log('🎬 预览窗口关闭动画完成 (CSS变换)');
+        }
+      }, duration + 10);
+      
+    } catch (error) {
+      console.error('关闭动画执行失败:', error);
+      // 直接关闭窗口
+      if (this.previewWindow && !this.previewWindow.isDestroyed()) {
+        this.previewWindow.close();
+      }
+    }
   }
 
   async animateWindowClose() {
@@ -944,48 +1245,74 @@ class FinderEnhanceApp {
     const endY = iconPosition.y - endSize / 2;
 
     return new Promise((resolve) => {
-      const steps = 15; // 减少步数，让关闭动画更快
-      const duration = 200; // 减少时长，让关闭更快
+      const duration = 80; // 关闭动画更快，0.12秒
+      const steps = 8; // 减少步数保持流畅
       const stepDuration = duration / steps;
       
+      // 💡 简单但稳定的关闭缓动
+      const easeInCubic = (t) => t * t * t;
+      
       let currentStep = 0;
+      let animationId;
       
       const animate = () => {
         if (!this.previewWindow || this.previewWindow.isDestroyed()) {
+          if (animationId) clearTimeout(animationId);
           resolve();
           return;
         }
         
         currentStep++;
         const progress = currentStep / steps;
+        const eased = easeInCubic(progress);
         
-        // 使用平滑的ease-in缓动函数
-        const easeIn = Math.pow(progress, 2.5);
+        // 💡 简单直接的计算
+        const currentX = startX + (endX - startX) * eased;
+        const currentY = startY + (endY - startY) * eased;
+        const currentWidth = startWidth + (endSize - startWidth) * eased;
+        const currentHeight = startHeight + (endSize - startHeight) * eased;
         
-        // 计算当前位置和尺寸
-        const currentX = Math.round(startX + (endX - startX) * easeIn);
-        const currentY = Math.round(startY + (endY - startY) * easeIn);
-        const currentWidth = Math.round(startWidth + (endSize - startWidth) * easeIn);
-        const currentHeight = Math.round(startHeight + (endSize - startHeight) * easeIn);
+        // 💡 简单的透明度渐变
+        let opacity;
+        if (progress < 0.7) {
+          opacity = 1; // 前70%保持不透明
+        } else {
+          // 最后30%线性淡出
+          const fadeProgress = (progress - 0.7) / 0.3;
+          opacity = Math.max(0, 1 - fadeProgress);
+        }
         
-        // 应用变换（保持完全不透明直到最后）
-        this.previewWindow.setBounds({
-          x: currentX,
-          y: currentY,
-          width: currentWidth,
-          height: currentHeight
-        });
+        // 💡 一次性更新所有属性
+        try {
+          this.previewWindow.setBounds({
+            x: Math.round(currentX),
+            y: Math.round(currentY),
+            width: Math.round(currentWidth),
+            height: Math.round(currentHeight)
+          });
+          this.previewWindow.setOpacity(opacity);
+        } catch (error) {
+          // 静默处理窗口更新错误
+          resolve();
+          return;
+        }
         
         if (currentStep < steps) {
-          setTimeout(animate, stepDuration);
+          // 💡 固定间隔，确保稳定性
+          animationId = setTimeout(animate, stepDuration);
         } else {
           // 动画完成，关闭窗口
-          this.previewWindow.close();
-          console.log('预览窗口关闭动画完成');
+          try {
+            this.previewWindow.close();
+          } catch (error) {
+            // 静默处理
+          }
+          console.log('🎬 预览窗口关闭动画完成 (超稳定)');
           resolve();
         }
       };
       
+      // 立即开始动画
       animate();
     });
   }
@@ -1002,17 +1329,26 @@ class FinderEnhanceApp {
   showPreferences() {
     // 显示设置窗口
     const prefsWindow = new BrowserWindow({
-      width: 500,
-      height: 400,
+      width: 480,
+      height: 520,
       resizable: false,
-      titleBarStyle: 'hiddenInset',
+      frame: false,
+      transparent: true,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      hasShadow: false,
+      thickFrame: false,
       webPreferences: {
         nodeIntegration: true,
-        contextIsolation: false
+        contextIsolation: false,
+        devTools: false // 禁用开发者工具
       }
     });
 
     prefsWindow.loadFile('src/windows/preferences.html');
+    
+    // 居中显示
+    prefsWindow.center();
   }
 
   showAbout() {
@@ -1030,17 +1366,17 @@ class FinderEnhanceApp {
     
     // 根据设置更新功能状态
     if (settings.enableSpacePreview) {
-      this.setupSpaceKeyListener();
+      // 重新设置空格键管理
+      this.setupSpaceKeyManagement();
     }
     
     if (settings.enableCutShortcut) {
       // 重新注册快捷键
-      globalShortcut.unregister('CommandOrControl+X');
-      globalShortcut.register('CommandOrControl+X', () => {
-        this.handleCutShortcut();
-      });
+      this.registerOptimizedShortcuts();
     } else {
+      // 注销剪切快捷键
       globalShortcut.unregister('CommandOrControl+X');
+      globalShortcut.unregister('CommandOrControl+V');
     }
   }
 
@@ -1179,6 +1515,18 @@ ipcMain.handle('set-auto-start', async (event, enabled) => {
       openAtLogin: enabled,
       openAsHidden: true
     });
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('minimize-window', async (event) => {
+  try {
+    const senderWindow = BrowserWindow.fromWebContents(event.sender);
+    if (senderWindow) {
+      senderWindow.minimize();
+    }
     return { success: true };
   } catch (error) {
     return { success: false, error: error.message };
