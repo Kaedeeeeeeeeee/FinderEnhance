@@ -5,7 +5,7 @@
 
 set -e
 
-echo "🚀 开始构建 FinderEnhance 发布版本..."
+echo "开始构建 FinderEnhance 发布版本..."
 
 # 检查当前目录
 if [ ! -f "package.json" ]; then
@@ -15,15 +15,15 @@ fi
 
 # 获取版本号
 VERSION=$(node -p "require('./package.json').version")
-echo "📦 当前版本：$VERSION"
+echo "当前版本：$VERSION"
 
 # 清理旧的构建文件
-echo "🧹 清理旧的构建文件..."
+echo "清理旧的构建文件..."
 rm -rf dist/
 rm -rf build/app-icon.iconset/
 
 # 创建图标
-echo "🎨 创建应用图标..."
+echo "创建应用图标..."
 mkdir -p build/app-icon.iconset
 
 # 生成不同尺寸的图标
@@ -41,32 +41,32 @@ sips -z 1024 1024 assets/icon4.png --out build/app-icon.iconset/icon_512x512@2x.
 # 转换为 ICNS 格式
 iconutil -c icns build/app-icon.iconset -o assets/app-icon.icns
 
-echo "✅ 图标创建完成"
+echo "图标创建完成"
 
 # 构建应用
-echo "🔨 构建应用..."
+echo "构建应用..."
 npm run build-all
 
 # 检查构建结果
 if [ ! -f "dist/FinderEnhance-$VERSION-arm64.dmg" ] || [ ! -f "dist/FinderEnhance-$VERSION.dmg" ]; then
-    echo "❌ 构建失败：DMG 文件未生成"
+    echo "构建失败：DMG 文件未生成"
     exit 1
 fi
 
 # 显示构建结果
-echo "✅ 构建完成！"
+echo "构建完成！"
 echo ""
-echo "📁 生成的文件："
+echo "生成的文件："
 ls -lh dist/*.dmg
 
 echo ""
-echo "📊 文件大小："
+echo "文件大小："
 du -h dist/*.dmg
 
 echo ""
-echo "🎉 发布版本 $VERSION 构建完成！"
+echo "发布版本 $VERSION 构建完成！"
 echo ""
-echo "📋 下一步："
+echo "下一步："
 echo "1. 测试 DMG 文件是否正常工作"
 echo "2. 创建 GitHub Release"
 echo "3. 上传 DMG 文件到 Release"
@@ -76,4 +76,4 @@ echo "4. 更新 README 中的下载链接"
 rm -rf build/app-icon.iconset/
 
 echo ""
-echo "🚀 准备就绪！" 
+echo "准备就绪！" 
