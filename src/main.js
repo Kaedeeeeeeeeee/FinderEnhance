@@ -9,8 +9,12 @@ class FinderEnhanceApp {
   constructor() {
     this.tray = null;
     this.previewWindow = null;
+    this.isPreviewCreating = false; // 添加创建中标记
     this.previewService = new PreviewService();
     this.clipboardService = new ClipboardService();
+    
+    // 💡 应用退出控制
+    this.isQuitting = false; // 控制应用是否正在退出
     
     // 💡 完全接管模式 - 高效状态缓存
     this.cachedFinderActive = false;
@@ -239,7 +243,7 @@ class FinderEnhanceApp {
         label: '退出',
         type: 'normal',
         click: () => {
-          app.quit();
+          this.quitApp();
         }
       }
     ]);
@@ -394,6 +398,9 @@ class FinderEnhanceApp {
 
     // 💡 空格键智能管理 - 不是全局注册，而是按需注册
     this.setupSpaceKeyManagement();
+    
+    // 智能空格键管理 - 根据当前选中的文件类型决定是否注册
+    // 不再强制注册空格键，改为按需智能注册
 
     // 备用快捷键
     const backupRegistered = globalShortcut.register('CommandOrControl+Shift+P', () => {
@@ -520,22 +527,23 @@ class FinderEnhanceApp {
 
   // 判断是否需要拦截空格键
   shouldInterceptSpaceKey() {
-    // 只有在 Finder 激活且选中了文件夹或压缩包时才拦截
+    // 只要在 Finder 激活且选中了文件夹或压缩包就拦截空格键进行预览
     if (!this.cachedFinderActive || !this.cachedSelectedFile) {
       return false;
     }
 
-    // 检查选中的是否是文件夹或压缩包
+    // 只对文件夹和压缩包启用自定义预览，普通文件让macOS原生Quick Look处理
     return this.cachedSelectedFile.startsWith('folder:') || 
            this.cachedSelectedFile.startsWith('archive:');
   }
 
-  // 💡 空格键智能拦截处理 - 简化版本（只在需要时才被调用）
+  // 💡 空格键智能拦截处理 - 改进版本，解决窗口状态混乱问题
   async handleSpaceKeyFullTakeover() {
     const now = Date.now();
     
-    // 防抖处理
+    // 增强防抖处理
     if (this.spaceKeyBlocked || (now - this.lastSpaceKeyTime) < this.spaceKeyThrottle) {
+      console.log('🔄 空格键防抖中，跳过');
       return;
     }
     
@@ -543,28 +551,49 @@ class FinderEnhanceApp {
     this.spaceKeyBlocked = true;
     
     try {
-      console.log('⚡ 空格键拦截 - 显示文件夹/压缩包预览');
+      console.log('⚡ 空格键拦截 - 处理预览');
       
-      // 如果我们的预览窗口已打开，直接关闭
-      if (this.previewWindow && !this.previewWindow.isDestroyed()) {
-        console.log('⚡ 预览窗口已打开，关闭窗口');
-        this.animateWindowClose();
+      // 检查是否正在创建预览窗口
+      if (this.isPreviewCreating) {
+        console.log('🔄 预览窗口正在创建中，跳过 (isPreviewCreating=true)');
         return;
       }
       
-      // 由于只在需要时才注册，这里可以直接处理
+      // 改进的窗口状态检查：确保窗口真正存在且可用
+      const windowExists = this.previewWindow && 
+                          !this.previewWindow.isDestroyed();
+      
+      if (windowExists) {
+        console.log('⚡ 预览窗口存在，关闭窗口');
+        await this.animateWindowClose();
+        return;
+      }
+      
+      // 如果窗口存在，先彻底清理
+      if (this.previewWindow && !this.previewWindow.isDestroyed()) {
+        console.log('🧹 清理现有预览窗口');
+        this.previewWindow.destroy();
+        this.previewWindow = null;
+        this.isPreviewCreating = false;
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      
+      // 获取当前选中的文件路径
       const filePath = await this.getSelectedFilePathQuick();
       if (filePath) {
-        console.log('✅ 显示自定义预览');
+        console.log('✅ 显示自定义预览:', filePath);
         await this.showPreview(filePath);
       } else {
-        console.log('❌ 无法获取文件路径');
+        console.log('❌ 无法获取文件路径，可能没有选中文件');
       }
       
     } catch (error) {
       console.error('❌ 空格键处理异常:', error);
     } finally {
-      this.spaceKeyBlocked = false;
+      // 延迟解除阻塞，确保动画完成
+      setTimeout(() => {
+        this.spaceKeyBlocked = false;
+      }, 200);
     }
   }
 
@@ -573,10 +602,12 @@ class FinderEnhanceApp {
   async handleSpaceKeyPress(filePath = null) {
     try {
       // 如果没有提供文件路径，则获取当前选中的文件
-      const selectedFile = filePath || await this.getSelectedFile();
+      const selectedFile = filePath || await this.getSelectedFilePathQuick();
       if (selectedFile) {
         console.log('显示预览窗口:', selectedFile);
         this.showPreview(selectedFile);
+      } else {
+        console.log('未找到选中的文件');
       }
     } catch (error) {
       console.error('处理空格键按下时出错:', error);
@@ -761,8 +792,40 @@ class FinderEnhanceApp {
   }
 
   async showPreview(filePath) {
-    if (this.previewWindow) {
-      this.previewWindow.close();
+    console.log('🎬 开始显示预览:', filePath);
+    
+    // 防止重复创建
+    if (this.isPreviewCreating) {
+      console.log('🔄 预览窗口正在创建中，跳过重复创建 (isPreviewCreating=true)');
+      return;
+    }
+    
+    console.log('🚀 开始创建预览窗口，设置 isPreviewCreating=true');
+    this.isPreviewCreating = true;
+    
+    try {
+      // 如果预览窗口已存在且未被销毁，先清理
+      if (this.previewWindow && !this.previewWindow.isDestroyed()) {
+        try {
+          console.log('🧹 清理旧的预览窗口');
+          // 直接销毁窗口
+          this.previewWindow.destroy();
+          this.previewWindow = null;
+          this.isPreviewCreating = false;
+          
+          // 等待一小段时间确保窗口完全清理
+          await new Promise(resolve => setTimeout(resolve, 50));
+          console.log('✅ 旧预览窗口已销毁清理');
+        } catch (error) {
+          console.log('销毁旧预览窗口时出错:', error);
+          this.previewWindow = null;
+          this.isPreviewCreating = false; // 重置创建中标记
+        }
+      }
+    } catch (error) {
+      console.error('预览窗口预处理出错:', error);
+      this.isPreviewCreating = false;
+      return;
     }
 
     // 获取选中文件的屏幕位置
@@ -783,189 +846,174 @@ class FinderEnhanceApp {
     const initialX = iconPosition.x - initialSize / 2;
     const initialY = iconPosition.y - initialSize / 2;
 
-    this.previewWindow = new BrowserWindow({
-      width: initialSize,  // 🔄 回到小窗口开始，但加强保护
-      height: initialSize,
-      x: initialX,
-      y: initialY,
-      resizable: false,
-      frame: false, // 移除窗口边框和标题栏
-      show: false,
-      transparent: true, // 启用透明背景支持毛玻璃效果
-      opacity: 0, // 🔄 初始完全透明，避免闪烁
-      alwaysOnTop: true, // 保持在最前面
-      skipTaskbar: true, // 不在任务栏显示
-      vibrancy: 'fullscreen-ui', // macOS毛玻璃效果
-      visualEffectState: 'active', // 确保毛玻璃效果始终激活
-      backgroundMaterial: 'acrylic', // Windows毛玻璃效果
-      // 🚫 额外的窗口设置来避免调试元素
-      titleBarStyle: 'hidden', // 隐藏标题栏
-      hasShadow: false, // 移除窗口阴影（可能导致边框显示）
-      thickFrame: false, // 移除厚边框
-      // 🚫 更严格的窗口控制
-      minimizable: false,
-      maximizable: false,
-      closable: false, // 完全禁用关闭按钮
-      focusable: true,
-      fullscreenable: false, // 禁用全屏按钮
-      webPreferences: {
-        nodeIntegration: true,
-        contextIsolation: false,
-        backgroundThrottling: false, // 防止背景节流影响毛玻璃效果
-        // 💡 硬件加速和性能优化
-        hardwareAcceleration: true, // 启用硬件加速
-        enableRemoteModule: false, // 禁用远程模块提升性能
-        webSecurity: false, // 允许本地文件访问
-        allowRunningInsecureContent: false,
-        experimentalFeatures: true, // 启用实验性功能
-        // 💡 渲染优化
-        offscreen: false, // 确保使用GPU渲染
-        paintWhenInitiallyHidden: false, // 初始隐藏时不渲染
-        // 💡 内存和CPU优化
-        v8CacheOptions: 'code', // V8代码缓存
-        enableWebSQL: false, // 禁用WebSQL
-        enableBlinkFeatures: 'CSSBackdropFilter', // 启用CSS backdrop-filter
-        // 🚫 明确禁用开发者工具和调试功能
-        devTools: false,
-        enableRemoteModule: false,
-        sandbox: false, // 禁用沙盒模式避免额外窗口
-        partition: null, // 不使用独立分区
-        preload: null, // 不使用预加载脚本
-        additionalArguments: ['--disable-dev-shm-usage', '--disable-web-security']
-      }
-    });
+    try {
+      console.log('🏗️ 创建预览窗口');
+      this.previewWindow = new BrowserWindow({
+        width: initialSize,
+        height: initialSize,
+        x: initialX,
+        y: initialY,
+        resizable: false,
+        frame: false,
+        show: false,
+        transparent: true,
+        opacity: 0,
+        alwaysOnTop: true,
+        skipTaskbar: true,
+        vibrancy: 'fullscreen-ui',
+        visualEffectState: 'active',
+        backgroundMaterial: 'acrylic',
+        titleBarStyle: 'hidden',
+        titleBarOverlay: false,
+        hasShadow: false,
+        thickFrame: false,
+        minimizable: false,
+        maximizable: false,
+        closable: false, // 完全禁用关闭按钮
+        focusable: true,
+        fullscreenable: false,
+        webPreferences: {
+          nodeIntegration: true,
+          contextIsolation: false,
+          backgroundThrottling: false,
+          hardwareAcceleration: true,
+          enableRemoteModule: false,
+          webSecurity: false,
+          allowRunningInsecureContent: false,
+          experimentalFeatures: true,
+          offscreen: false,
+          paintWhenInitiallyHidden: false,
+          v8CacheOptions: 'code',
+          enableWebSQL: false,
+          enableBlinkFeatures: 'CSSBackdropFilter',
+          devTools: false,
+          sandbox: false,
+          partition: null,
+          preload: null,
+          additionalArguments: ['--disable-dev-shm-usage', '--disable-web-security']
+        }
+      });
 
-    this.previewWindow.loadFile('src/windows/preview.html');
-    
-    // 发送文件路径到渲染进程
-    this.previewWindow.webContents.once('dom-ready', () => {
-      // 🚫 强制关闭任何可能的子窗口
-      try {
-        const allWindows = BrowserWindow.getAllWindows();
-        allWindows.forEach(win => {
-          if (win !== this.previewWindow && win.getParentWindow() === this.previewWindow) {
-            win.close();
-          }
-        });
-      } catch (error) {
-        // 忽略错误
-      }
+      // 添加错误处理
+      this.previewWindow.on('unresponsive', () => {
+        console.log('预览窗口无响应，将重启');
+        if (this.previewWindow && !this.previewWindow.isDestroyed()) {
+          this.previewWindow.destroy();
+          this.previewWindow = null;
+        }
+        this.isPreviewCreating = false; // 重置创建中标记
+      });
+
+      this.previewWindow.on('closed', () => {
+        // 这个事件可能不会被触发（如果使用destroy），所以不依赖它来重置状态
+        console.log('预览窗口 closed 事件触发');
+      });
+
+      // 阻止开发者工具打开
+      this.previewWindow.webContents.on('devtools-opened', () => {
+        if (this.previewWindow && !this.previewWindow.isDestroyed()) {
+          this.previewWindow.webContents.closeDevTools();
+        }
+      });
+
+      // 简化和增强DOM加载处理
+      let domReady = false;
+      let loadTimeout = null;
       
-      this.previewWindow.webContents.send('show-preview', filePath);
-      
-      // 🚫 在显示前强制隐藏所有可能的子元素
-      this.previewWindow.webContents.executeJavaScript(`
-        // 隐藏body直到动画开始
-        document.body.style.visibility = 'hidden';
-        document.body.style.opacity = '0';
+      // 多重DOM准备就绪检测机制
+      const handleDOMReady = () => {
+        if (domReady) return; // 防止重复执行
+        domReady = true;
         
-        // 立即隐藏任何可能的窗口控制按钮
-        const hideWindowControls = () => {
-          const selectors = [
-            '.close-button', '.minimize-button', '.zoom-button', '.window-controls',
-            'button[class*="close"]', 'button[class*="minimize"]', 'button[class*="zoom"]',
-            '[class*="close-button"]', '[class*="minimize-button"]', '[class*="zoom-button"]',
-            '[id*="close"]', '[id*="minimize"]', '[id*="zoom"]'
-          ];
+        if (loadTimeout) {
+          clearTimeout(loadTimeout);
+          loadTimeout = null;
+        }
+        
+        console.log('🎯 DOM已准备就绪，开始设置预览');
+        if (!this.previewWindow || this.previewWindow.isDestroyed()) {
+          console.log('❌ 预览窗口已被销毁，退出设置');
+          return;
+        }
+        
+        console.log('📤 发送预览数据到渲染进程:', filePath);
+        this.previewWindow.webContents.send('show-preview', filePath);
+        
+        // 简化按钮隐藏代码
+        this.previewWindow.webContents.executeJavaScript(`
+          // 隐藏body直到动画开始
+          document.body.style.visibility = 'hidden';
+          document.body.style.opacity = '0';
           
-          selectors.forEach(selector => {
-            const elements = document.querySelectorAll(selector);
-            elements.forEach(el => {
-              el.style.display = 'none';
-              el.style.visibility = 'hidden';
-              el.style.opacity = '0';
-              el.style.pointerEvents = 'none';
+          // 强制隐藏所有按钮
+          const hideButtons = () => {
+            const buttons = document.querySelectorAll('button, input[type="button"], .close-button, .minimize-button, .zoom-button');
+            buttons.forEach(btn => {
+              btn.style.display = 'none !important';
+              btn.style.visibility = 'hidden !important';
+              btn.disabled = true;
             });
-          });
+          };
           
-          // 隐藏左上角区域的任何元素
-          const topLeftElements = document.querySelectorAll('*');
-          topLeftElements.forEach(el => {
-            const style = window.getComputedStyle(el);
-            if (style.position === 'absolute' || style.position === 'fixed') {
-              if (style.top === '0px' && style.left === '0px' && el.className !== 'preview-container') {
-                el.style.display = 'none';
-              }
-            }
-          });
-        };
+          hideButtons();
+          setInterval(hideButtons, 500);
+        `).catch(() => {});
         
-        // 立即执行一次
-        hideWindowControls();
+        // 显示窗口并开始动画
+        if (!this.previewWindow || this.previewWindow.isDestroyed()) {
+          return;
+        }
         
-        // 设置定时器持续监控
-        setInterval(hideWindowControls, 100);
-      `).catch(() => {});
-      
-      // 显示窗口并开始动画
-      this.previewWindow.show();
-      
-      // 短暂延迟后开始动画，确保窗口完全初始化
-      setTimeout(() => {
+        this.previewWindow.show();
+        
+        // 立即开始动画
         this.animateWindowOpen(iconPosition.x - 25, iconPosition.y - 25, 50, finalX, finalY, finalWidth, finalHeight);
-      }, 5);
-    });
+        
+        // 重置创建中标记
+        console.log('✅ DOM准备完成，重置 isPreviewCreating=false');
+        this.isPreviewCreating = false;
+      };
+      
+      // 注册多个DOM准备事件监听器
+      this.previewWindow.webContents.once('dom-ready', handleDOMReady);
+      this.previewWindow.webContents.once('did-finish-load', handleDOMReady);
+      
+      // 设置超时强制执行机制（缩短为3秒）
+      loadTimeout = setTimeout(() => {
+        if (!domReady) {
+          console.log('⚠️ DOM加载超时，强制执行');
+          handleDOMReady();
+        } else {
+          // 如果DOM已经准备好但标记还没重置，确保重置
+          this.isPreviewCreating = false;
+        }
+      }, 3000);
 
-    this.previewWindow.on('closed', () => {
-      this.previewWindow = null;
-      console.log('预览窗口已关闭');
-    });
+      // 加载预览页面
+      console.log('📄 加载预览页面');
+      await this.previewWindow.loadFile('src/windows/preview.html');
+      console.log('✅ 预览页面加载完成');
+      
+      // 添加窗口失去焦点时的处理（可选）
+      this.previewWindow.on('blur', () => {
+        // 可以在这里添加失去焦点时的逻辑，比如改变窗口透明度等
+      });
 
-    // 🚫 阻止开发者工具打开
-    this.previewWindow.webContents.on('devtools-opened', () => {
-      this.previewWindow.webContents.closeDevTools();
-    });
-
-    // 🚫 强制隐藏所有可能的调试窗口和子视图
-    this.previewWindow.webContents.on('did-finish-load', () => {
-      // 注入CSS来隐藏任何可能的调试元素和窗口控制按钮
-      this.previewWindow.webContents.insertCSS(`
-        /* 隐藏所有可能的调试元素 */
-        [class*="devtools"], [id*="devtools"], [class*="debug"], [id*="debug"] {
-          display: none !important;
-          visibility: hidden !important;
-          opacity: 0 !important;
+    } catch (error) {
+      console.error('❌ 创建预览窗口时出错:', error);
+      if (this.previewWindow && !this.previewWindow.isDestroyed()) {
+        try {
+          this.previewWindow.destroy();
+        } catch (destroyError) {
+          console.error('销毁预览窗口时出错:', destroyError);
         }
-        
-        /* 隐藏所有窗口控制按钮 */
-        .close-button, .minimize-button, .zoom-button, .window-controls,
-        button[class*="close"], button[class*="minimize"], button[class*="zoom"],
-        [class*="close-button"], [class*="minimize-button"], [class*="zoom-button"],
-        [id*="close"], [id*="minimize"], [id*="zoom"] {
-          display: none !important;
-          visibility: hidden !important;
-          opacity: 0 !important;
-          pointer-events: none !important;
-        }
-        
-        /* 隐藏可能的 Electron 内部元素 */
-        webview, object, embed {
-          display: none !important;
-        }
-        
-        /* 隐藏可能的系统级窗口控制元素 */
-        div[style*="position: absolute"][style*="top: 0"][style*="left: 0"],
-        div[style*="position: fixed"][style*="top: 0"][style*="left: 0"] {
-          display: none !important;
-        }
-        
-        /* 确保只有我们的内容可见 */
-        body > *:not(.preview-container) {
-          display: none !important;
-        }
-        
-        /* 强制隐藏左上角区域的任何元素 */
-        *[style*="top: 0"][style*="left: 0"],
-        *[style*="position: absolute"][style*="z-index"] {
-          display: none !important;
-        }
-      `);
-    });
-    
-    // 添加窗口失去焦点时的处理（可选）
-    this.previewWindow.on('blur', () => {
-      // 可以在这里添加失去焦点时的逻辑，比如改变窗口透明度等
-    });
+        this.previewWindow = null;
+      }
+      // 重置创建中标记
+      this.isPreviewCreating = false;
+      // 不要抛出错误，而是显示错误信息
+      console.error('预览功能暂时不可用，请稍后重试');
+    }
   }
 
   async getSelectedFileIconPosition() {
@@ -1301,13 +1349,17 @@ class FinderEnhanceApp {
           // 💡 固定间隔，确保稳定性
           animationId = setTimeout(animate, stepDuration);
         } else {
-          // 动画完成，关闭窗口
+          // 动画完成，直接销毁窗口并重置状态
           try {
-            this.previewWindow.close();
+            this.previewWindow.destroy();
+            this.previewWindow = null;
+            this.isPreviewCreating = false;
+            console.log('🎬 预览窗口关闭动画完成，窗口已销毁，重置 isPreviewCreating=false');
           } catch (error) {
-            // 静默处理
+            // 静默处理销毁错误
+            this.previewWindow = null;
+            this.isPreviewCreating = false;
           }
-          console.log('🎬 预览窗口关闭动画完成 (超稳定)');
           resolve();
         }
       };
@@ -1398,6 +1450,42 @@ class FinderEnhanceApp {
     }
   }
 
+  // 💡 正确退出应用
+  quitApp() {
+    console.log('🚪 开始退出应用程序...');
+    this.isQuitting = true;
+    
+    try {
+      // 清理预览窗口
+      if (this.previewWindow && !this.previewWindow.isDestroyed()) {
+        this.previewWindow.destroy();
+        this.previewWindow = null;
+      }
+      
+      // 清理监控定时器
+      this.stopOptimizedMonitor();
+      
+      // 清理全局快捷键
+      globalShortcut.unregisterAll();
+      
+      // 清理托盘
+      if (this.tray) {
+        this.tray.destroy();
+        this.tray = null;
+      }
+      
+      console.log('✅ 资源清理完成，正在退出...');
+      
+      // 强制退出应用
+      app.exit(0);
+      
+    } catch (error) {
+      console.error('退出应用时出现错误:', error);
+      // 即使出错也要退出
+      app.exit(1);
+    }
+  }
+
   // 💡 快速检测系统Quick Look状态
   async checkQuickLookStatus() {
     const script = `
@@ -1473,7 +1561,12 @@ app.whenReady().then(async () => {
 });
 
 app.on('window-all-closed', (event) => {
-  // 阻止应用退出，保持在托盘运行
+  // 如果用户明确要求退出，则允许退出
+  if (finderApp.isQuitting) {
+    return; // 不阻止退出
+  }
+  
+  // 否则阻止应用退出，保持在托盘运行
   event.preventDefault();
 });
 
@@ -1485,6 +1578,11 @@ app.on('activate', () => {
 });
 
 app.on('will-quit', () => {
+  // 如果是正常退出（通过quitApp），资源已经清理过了
+  if (finderApp.isQuitting) {
+    return;
+  }
+  
   // 清理全局快捷键
   globalShortcut.unregisterAll();
   

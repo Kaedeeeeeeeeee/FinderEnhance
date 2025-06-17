@@ -6,9 +6,14 @@ class PreviewWindow {
     this.currentPath = '';
     this.currentData = null;
     this.filteredItems = [];
+    this.isLoading = false;
     
     this.initializeElements();
     this.bindEvents();
+    
+    // 添加初始化完成标志
+    this.initialized = true;
+    console.log('🎬 预览窗口初始化完成');
   }
 
   initializeElements() {
@@ -18,11 +23,19 @@ class PreviewWindow {
       fileList: document.getElementById('fileList'),
       emptyState: document.getElementById('emptyState')
     };
+
+    // 验证所有必需的元素都存在
+    Object.keys(this.elements).forEach(key => {
+      if (!this.elements[key]) {
+        console.error(`⚠️ 找不到元素: ${key}`);
+      }
+    });
   }
 
   bindEvents() {
     // IPC事件监听
     ipcRenderer.on('show-preview', (event, filePath) => {
+      console.log('📁 收到预览请求:', filePath);
       this.loadPreview(filePath);
     });
 
@@ -36,23 +49,64 @@ class PreviewWindow {
     document.addEventListener('keydown', (e) => {
       this.handleKeyDown(e);
     });
+
+    // 确保窗口关闭时清理资源
+    window.addEventListener('beforeunload', () => {
+      this.cleanup();
+    });
+
+    // 添加错误处理
+    window.addEventListener('error', (e) => {
+      console.error('预览窗口发生错误:', e.error);
+      this.showError('预览窗口发生错误: ' + e.message);
+    });
+
+    // 捕获未处理的Promise拒绝
+    window.addEventListener('unhandledrejection', (e) => {
+      console.error('未处理的Promise拒绝:', e.reason);
+      this.showError('加载预览时发生错误');
+    });
   }
 
   async loadPreview(filePath) {
+    // 防止重复加载
+    if (this.isLoading) {
+      console.log('⏳ 正在加载中，跳过重复请求');
+      return;
+    }
+
+    this.isLoading = true;
     this.currentPath = filePath;
+    
     // 直接隐藏所有状态，等待数据加载完成
     this.hideAllStates();
 
     try {
+      console.log('📂 开始加载预览:', filePath);
       const data = await ipcRenderer.invoke('get-file-preview', filePath);
+      
+      if (!data) {
+        throw new Error('未收到预览数据');
+      }
+      
       this.currentData = data;
       this.displayPreview(data);
+      console.log('✅ 预览加载完成');
+      
     } catch (error) {
-      this.showError(error.message);
+      console.error('❌ 加载预览失败:', error);
+      this.showError(error.message || '加载预览失败');
+    } finally {
+      this.isLoading = false;
     }
   }
 
   displayPreview(data) {
+    if (!data) {
+      this.showError('预览数据无效');
+      return;
+    }
+
     if (data.type === 'error') {
       this.showError(data.message);
       return;
@@ -69,52 +123,89 @@ class PreviewWindow {
   }
 
   renderFileList() {
-    const listHtml = this.filteredItems.map((item, index) => {
-      const icon = this.getItemIcon(item);
-      const size = this.formatFileSize(item.size);
-      const modified = this.formatDate(item.modified);
+    if (!this.filteredItems || this.filteredItems.length === 0) {
+      this.showEmptyState();
+      return;
+    }
 
-      return `
-        <div class="file-item" data-index="${index}" data-name="${item.name}">
-          <span class="file-item-icon">${icon}</span>
-          <div class="file-item-details">
-            <div class="file-item-name" title="${item.name}">${item.name}</div>
-            <div class="file-item-meta">
-              ${item.type === 'directory' ? '文件夹' : ''}
-              ${item.size !== null && item.type !== 'directory' ? size : ''}
-              ${modified ? ` • ${modified}` : ''}
+    try {
+      const listHtml = this.filteredItems.map((item, index) => {
+        const icon = this.getItemIcon(item);
+        const size = this.formatFileSize(item.size);
+        const modified = this.formatDate(item.modified);
+
+        return `
+          <div class="file-item" data-index="${index}" data-name="${item.name}">
+            <span class="file-item-icon">${icon}</span>
+            <div class="file-item-details">
+              <div class="file-item-name" title="${item.name}">${this.escapeHtml(item.name)}</div>
+              <div class="file-item-meta">
+                ${item.type === 'directory' ? '文件夹' : ''}
+                ${item.size !== null && item.type !== 'directory' ? size : ''}
+                ${modified ? ` • ${modified}` : ''}
+              </div>
             </div>
           </div>
-        </div>
-      `;
-    }).join('');
+        `;
+      }).join('');
 
-    this.elements.fileList.innerHTML = listHtml;
+      this.elements.fileList.innerHTML = listHtml;
+      
+    } catch (error) {
+      console.error('渲染文件列表失败:', error);
+      this.showError('渲染预览内容失败');
+    }
+  }
+
+  // 添加HTML转义以防止XSS
+  escapeHtml(text) {
+    const map = {
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#039;'
+    };
+    return text.replace(/[&<>"']/g, (m) => map[m]);
   }
 
   showError(message) {
+    console.log('❌ 显示错误:', message);
     this.hideAllStates();
-    this.elements.error.style.display = 'flex';
-    const errorMessage = document.getElementById('errorMessage');
-    if (errorMessage) {
-      errorMessage.textContent = message || '无法读取内容';
+    
+    if (this.elements.error) {
+      this.elements.error.style.display = 'flex';
+      const errorMessage = document.getElementById('errorMessage');
+      if (errorMessage) {
+        errorMessage.textContent = message || '无法读取内容';
+      }
     }
   }
 
   showEmptyState() {
+    console.log('📭 显示空状态');
     this.hideAllStates();
-    this.elements.emptyState.style.display = 'flex';
+    
+    if (this.elements.emptyState) {
+      this.elements.emptyState.style.display = 'flex';
+    }
   }
 
   showFileList() {
+    console.log('📋 显示文件列表');
     this.hideAllStates();
-    this.elements.fileList.style.display = 'block';
+    
+    if (this.elements.fileList) {
+      this.elements.fileList.style.display = 'block';
+    }
   }
 
   hideAllStates() {
-    this.elements.error.style.display = 'none';
-    this.elements.fileList.style.display = 'none';
-    this.elements.emptyState.style.display = 'none';
+    Object.values(this.elements).forEach(element => {
+      if (element) {
+        element.style.display = 'none';
+      }
+    });
   }
 
   getItemIcon(item) {
@@ -243,9 +334,33 @@ class PreviewWindow {
       console.log('🎬 内容区域隐藏完成');
     }
   }
+
+  cleanup() {
+    // 清理资源
+    this.currentPath = '';
+    this.currentData = null;
+    this.filteredItems = [];
+    this.isLoading = false;
+    console.log('🎬 预览窗口清理完成');
+  }
 }
 
 // 初始化预览窗口
 document.addEventListener('DOMContentLoaded', () => {
+  console.log('🎯 渲染进程 - DOMContentLoaded事件触发');
   new PreviewWindow();
-}); 
+  console.log('🎯 渲染进程 - PreviewWindow实例已创建');
+});
+
+// 添加备用初始化机制
+if (document.readyState === 'loading') {
+  // DOM还在加载中，等待DOMContentLoaded
+  console.log('📋 渲染进程 - DOM正在加载，等待DOMContentLoaded');
+} else {
+  // DOM已经加载完成，直接初始化
+  console.log('📋 渲染进程 - DOM已加载完成，直接初始化');
+  setTimeout(() => {
+    new PreviewWindow();
+    console.log('📋 渲染进程 - 备用初始化完成');
+  }, 100);
+} 

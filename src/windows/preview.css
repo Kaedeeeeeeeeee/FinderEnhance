@@ -12,27 +12,40 @@ body {
     -webkit-user-select: none;
 }
 
-/* 明确隐藏任何可能的窗口控制按钮 */
+/* 明确隐藏任何可能的窗口控制按钮 - 超强版本 */
 .close-button,
 .minimize-button,
 .zoom-button,
 .window-controls,
+.title-bar,
+.title-bar-controls,
 button[class*="close"],
 button[class*="minimize"],
 button[class*="zoom"],
 button[class*="maximize"],
+button[class*="title"],
 [class*="close-button"],
 [class*="minimize-button"],
 [class*="zoom-button"],
 [class*="window-controls"],
+[class*="title-bar"],
 [id*="close"],
 [id*="minimize"],
 [id*="zoom"],
-[id*="maximize"] {
+[id*="maximize"],
+[id*="title"],
+button,
+input[type="button"] {
     display: none !important;
     visibility: hidden !important;
     opacity: 0 !important;
     pointer-events: none !important;
+    position: absolute !important;
+    left: -9999px !important;
+    top: -9999px !important;
+    width: 0 !important;
+    height: 0 !important;
+    z-index: -9999 !important;
 }
 
 /* 隐藏可能的系统级窗口控制元素 */
