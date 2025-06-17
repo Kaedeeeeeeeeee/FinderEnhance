@@ -1,16 +1,29 @@
 {
   "name": "finder-enhance",
-  "version": "1.0.0",
-  "description": "Mac Finder功能增强工具",
+  "version": "3.0.0",
+  "description": "Mac Finder功能增强工具 - 智能空格预览和快捷剪切",
   "main": "src/main.js",
+  "homepage": "https://github.com/Kaedeeeeeeeeee/FinderEnhance",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Kaedeeeeeeeeee/FinderEnhance.git"
+  },
   "scripts": {
     "start": "electron .",
-    "build": "electron-builder",
-    "build-mac": "electron-builder --mac",
-    "dev": "electron . --dev"
+    "build": "CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder",
+    "build-mac": "CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac",
+    "build-mac-arm64": "CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --arm64",
+    "build-mac-x64": "CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --x64",
+    "build-all": "CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --arm64 --x64",
+    "dev": "electron . --dev",
+    "clean": "rm -rf dist",
+    "pack": "electron-builder --dir"
   },
-  "keywords": ["finder", "mac", "enhance", "preview", "cut"],
-  "author": "FinderEnhance Team",
+  "keywords": ["finder", "mac", "enhance", "preview", "cut", "macos", "electron", "utility"],
+  "author": {
+    "name": "FinderEnhance Team",
+    "email": "contact@finderenhance.com"
+  },
   "license": "MIT",
   "devDependencies": {
     "electron": "^27.0.0",
@@ -24,18 +37,57 @@
   "build": {
     "appId": "com.finderenhance.app",
     "productName": "FinderEnhance",
+    "copyright": "Copyright © 2024 FinderEnhance Team",
     "directories": {
       "output": "dist"
-    },
-    "mac": {
-      "category": "public.app-category.utilities",
-      "target": "dmg",
-      "icon": "assets/icon.icns"
     },
     "files": [
       "src/**/*",
       "assets/**/*",
-      "node_modules/**/*"
-    ]
+      "node_modules/**/*",
+      "!node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}",
+      "!node_modules/*/{test,__tests__,tests,powered-test,example,examples}",
+      "!node_modules/*.d.ts",
+      "!node_modules/.bin",
+      "!**/*.{iml,o,hprof,orig,pyc,pyo,rbc,swp,csproj,sln,xproj}",
+      "!.editorconfig",
+      "!**/._*",
+      "!**/{.DS_Store,.git,.hg,.svn,CVS,RCS,SCCS,.gitignore,.gitattributes}",
+      "!**/{__pycache__,thumbs.db,.flowconfig,.idea,.vs,.nyc_output}",
+      "!**/{appveyor.yml,.travis.yml,circle.yml}",
+      "!**/{npm-debug.log,yarn.lock,.yarn-integrity,.yarn-metadata.json}"
+    ],
+    "mac": {
+      "category": "public.app-category.utilities",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["arm64", "x64"]
+        }
+      ],
+      "icon": "assets/app-icon.icns",
+      "minimumSystemVersion": "10.14.0"
+    },
+    "dmg": {
+      "title": "FinderEnhance ${version}",
+      "icon": "assets/app-icon.icns",
+      "contents": [
+        {
+          "x": 130,
+          "y": 220,
+          "type": "file"
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ],
+      "window": {
+        "width": 540,
+        "height": 380
+      }
+    }
   }
 } 

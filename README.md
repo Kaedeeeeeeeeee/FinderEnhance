@@ -88,13 +88,30 @@
 - 64位处理器
 - 150MB 可用磁盘空间
 
-## 安装方法
+## 下载安装
 
-### 方式一：从源码构建
+### 📦 直接下载（推荐）
+
+从 [GitHub Releases](https://github.com/Kaedeeeeeeeeee/FinderEnhance/releases/latest) 下载最新版本：
+
+- **Apple Silicon Mac (M1/M2/M3)**：[FinderEnhance-3.0.0-arm64.dmg](https://github.com/Kaedeeeeeeeeee/FinderEnhance/releases/download/v3.0.0/FinderEnhance-3.0.0-arm64.dmg) (96MB)
+- **Intel Mac**：[FinderEnhance-3.0.0.dmg](https://github.com/Kaedeeeeeeeeee/FinderEnhance/releases/download/v3.0.0/FinderEnhance-3.0.0.dmg) (101MB)
+
+### 🚀 快速安装步骤
+
+1. **下载DMG文件**：选择适合您处理器的版本
+2. **打开DMG文件**：双击下载的DMG文件
+3. **拖拽安装**：将 `FinderEnhance.app` 拖拽到 `Applications` 文件夹
+4. **首次运行**：右键点击应用选择"打开"（绕过未签名警告）
+5. **授权权限**：在系统偏好设置中授予必要的辅助功能权限
+
+> 💡 **详细安装指南**：查看 [INSTALLATION.md](INSTALLATION.md) 获取完整的安装和故障排除说明
+
+### 🔧 从源码构建
 
 1. **克隆项目**
    ```bash
-   git clone https://github.com/your-username/FinderEnhance.git
+   git clone https://github.com/Kaedeeeeeeeeee/FinderEnhance.git
    cd FinderEnhance
    ```
 
@@ -108,15 +125,14 @@
    npm start
    ```
 
-### 方式二：打包安装
-
-1. **构建应用**
+4. **构建发布版本**
    ```bash
+   # 使用自动化脚本
+   ./scripts/build-release.sh
+   
+   # 或手动构建
    npm run build-mac
    ```
-
-2. **安装DMG文件**
-   在 `dist` 目录中找到生成的 `.dmg` 文件，双击安装
 
 ## 使用指南
 
