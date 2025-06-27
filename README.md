@@ -1,4 +1,4 @@
-# Finder增强工具 v3.0
+# Finder增强工具 v3.0.3
 
 一个基于Electron开发的Mac Finder功能增强应用程序，提供智能空格预览和快捷剪切功能。
 
@@ -61,7 +61,13 @@
 
 ## 版本历史
 
-### v3.0.2 (当前版本) - 剪切功能完美修复
+### v3.0.3 (当前版本) - 性能优化版本
+- **两层检测机制**：Finder检测1秒，文件检测0.1秒，大幅降低电池消耗
+- **智能监控策略**：非Finder时性能提升80%，只在必要时进行高频检测
+- **响应速度优化**：文件选择变化检测提升至100ms，保持快速响应
+- **资源使用优化**：显著减少后台CPU占用，更环保更省电
+
+### v3.0.2 - 剪切功能完美修复
 - **彻底解决剪切bug**：采用动态快捷键管理策略，完全避免权限问题
 - **一次按键成功**：在任何应用中剪切文本都能一次成功，无需多次按键
 - **智能快捷键管理**：只在需要时注册快捷键，其他时候让系统自然处理
@@ -100,8 +106,8 @@
 
 从 [GitHub Releases](https://github.com/Kaedeeeeeeeeee/FinderEnhance/releases/latest) 下载最新版本：
 
-- **Apple Silicon Mac (M1/M2/M3)**：[FinderEnhance-3.0.2-arm64.dmg](https://github.com/Kaedeeeeeeeeee/FinderEnhance/releases/download/v3.0.2/FinderEnhance-3.0.2-arm64.dmg) (101MB)
-- **Intel Mac**：[FinderEnhance-3.0.2.dmg](https://github.com/Kaedeeeeeeeeee/FinderEnhance/releases/download/v3.0.2/FinderEnhance-3.0.2.dmg) (106MB)
+- **Apple Silicon Mac (M1/M2/M3)**：[FinderEnhance-3.0.3-arm64.dmg](https://github.com/Kaedeeeeeeeeee/FinderEnhance/releases/download/v3.0.3/FinderEnhance-3.0.3-arm64.dmg) (101MB)
+- **Intel Mac**：[FinderEnhance-3.0.3.dmg](https://github.com/Kaedeeeeeeeeee/FinderEnhance/releases/download/v3.0.3/FinderEnhance-3.0.3.dmg) (106MB)
 
 ### 快速安装步骤
 

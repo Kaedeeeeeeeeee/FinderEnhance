@@ -20,8 +20,10 @@ class FinderEnhanceApp {
     this.cachedFinderActive = false;
     this.cachedSelectedFile = null;
     this.lastStateUpdate = 0;
-    this.stateUpdateInterval = 150; // 150ms 更新状态，平衡性能和响应性
-    this.monitorTimer = null;
+    this.finderCheckInterval = 1000; // 1000ms 检查Finder是否前台，低频率省电
+    this.fileCheckInterval = 100; // 200ms 检查文件选择，高频率响应
+    this.finderMonitorTimer = null;
+    this.fileMonitorTimer = null;
     
     // 💡 空格键智能管理相关
     this.spaceKeyBlocked = false; // 防止重复触发
@@ -260,109 +262,139 @@ class FinderEnhanceApp {
     this.tray.setContextMenu(contextMenu);
   }
 
-  // 💡 完全接管的高效状态监控
+  // 💡 完全接管的高效状态监控 - 两层检测优化版
   startOptimizedMonitor() {
-    if (this.monitorTimer) {
-      clearInterval(this.monitorTimer);
+    // 清理旧的定时器
+    if (this.finderMonitorTimer) {
+      clearInterval(this.finderMonitorTimer);
+    }
+    if (this.fileMonitorTimer) {
+      clearInterval(this.fileMonitorTimer);
     }
     
-    console.log('🔄 启动高效状态监控...');
+    console.log('🔄 启动两层优化状态监控...');
+    console.log(`📊 Finder检查: ${this.finderCheckInterval}ms, 文件检查: ${this.fileCheckInterval}ms`);
     
-    // 立即更新一次状态并管理空格键
-    this.updateCachedState();
+    // 立即检查一次Finder状态
+    this.checkFinderStatus();
     
     // 初始化时也检查一次空格键状态
     setTimeout(() => {
       this.manageSpaceKeyRegistration();
     }, 500);
     
-    // 设置定时器持续监控
-    this.monitorTimer = setInterval(() => {
-      this.updateCachedState();
-    }, this.stateUpdateInterval);
+    // 💡 第一层：低频检查Finder是否前台 (1秒)
+    this.finderMonitorTimer = setInterval(() => {
+      this.checkFinderStatus();
+    }, this.finderCheckInterval);
+    
+    // 💡 第二层：高频检查文件选择状态 (0.2秒) - 只在Finder活跃时运行
+    // 这个定时器会在checkFinderStatus中动态启动/停止
   }
 
-  async updateCachedState() {
+  // 💡 第一层检查：只检查Finder是否前台
+  async checkFinderStatus() {
     try {
-      const now = Date.now();
-      
-      // 使用单个优化的 AppleScript 获取所有需要的信息
       const script = `
-        set results to {}
-        
-        -- 检查前台应用
         tell application "System Events"
           try
             set frontApp to name of first application process whose frontmost is true
             if frontApp is "Finder" then
-              set end of results to "finder_active"
+              return "finder_active"
             else
-              set end of results to "finder_inactive"
+              return "finder_inactive"
             end if
           on error
-            set end of results to "finder_error"
+            return "finder_error"
           end try
         end tell
-        
-        -- 如果 Finder 活跃，获取选中文件信息
-        if item 1 of results is "finder_active" then
-          tell application "Finder"
-            try
-              set sel to selection
-              if (count of sel) > 0 then
-                set selectedItem to item 1 of sel
-                set itemClass to class of selectedItem
-                set itemName to name of selectedItem
-                
-                if itemClass is folder then
-                  set end of results to "folder:" & itemName
-                else
-                  set itemKind to kind of selectedItem
-                  if itemKind contains "Archive" or itemKind contains "ZIP" or itemKind contains "zip" or itemKind contains "RAR" or itemKind contains "rar" or itemKind contains "tar" or itemKind contains "gz" then
-                    set end of results to "archive:" & itemName
-                  else
-                    set end of results to "file:" & itemName
-                  end if
-                end if
-              else
-                set end of results to "no_selection"
-              end if
-            on error
-              set end of results to "selection_error"
-            end try
-          end tell
-        else
-          set end of results to "not_in_finder"
-        end if
-        
-        return (item 1 of results) & "|" & (item 2 of results)
       `;
 
-      exec(`osascript -e '${script}'`, { timeout: 300 }, (error, stdout) => {
+      exec(`osascript -e '${script}'`, { timeout: 200 }, (error, stdout) => {
         if (error) {
-          // 出错时保持上次状态，避免频繁状态切换
-          return;
+          return; // 出错时保持上次状态
         }
 
         const result = stdout.trim();
-        const [finderStatus, fileStatus] = result.split('|');
-        
-        // 更新缓存状态
         const wasFinderActive = this.cachedFinderActive;
-        this.cachedFinderActive = (finderStatus === 'finder_active');
+        this.cachedFinderActive = (result === 'finder_active');
         
+        // 💡 Finder状态变化时的处理
+        if (wasFinderActive !== this.cachedFinderActive) {
+          console.log(`🔍 Finder状态变化: ${this.cachedFinderActive ? '激活' : '非激活'}`);
+          
+          if (this.cachedFinderActive) {
+            // Finder激活时，启动高频文件检查
+            this.startFileMonitoring();
+            // 立即检查一次文件状态
+            this.checkFileSelection();
+          } else {
+            // Finder非激活时，停止高频文件检查，清理文件状态
+            this.stopFileMonitoring();
+            this.cachedSelectedFile = null;
+            // 立即更新快捷键状态
+            this.manageSpaceKeyRegistration();
+            this.manageCutPasteShortcuts();
+          }
+        }
+      });
+    } catch (error) {
+      // 静默处理错误
+    }
+  }
+
+  // 💡 第二层检查：只检查文件选择状态（仅在Finder激活时运行）
+  async checkFileSelection() {
+    if (!this.cachedFinderActive) {
+      return; // Finder未激活时不检查文件
+    }
+
+    try {
+      const script = `
+        tell application "Finder"
+          try
+            set sel to selection
+            if (count of sel) > 0 then
+              set selectedItem to item 1 of sel
+              set itemClass to class of selectedItem
+              set itemName to name of selectedItem
+              
+              if itemClass is folder then
+                return "folder:" & itemName
+              else
+                set itemKind to kind of selectedItem
+                if itemKind contains "Archive" or itemKind contains "ZIP" or itemKind contains "zip" or itemKind contains "RAR" or itemKind contains "rar" or itemKind contains "tar" or itemKind contains "gz" then
+                  return "archive:" & itemName
+                else
+                  return "file:" & itemName
+                end if
+              end if
+            else
+              return "no_selection"
+            end if
+          on error
+            return "selection_error"
+          end try
+        end tell
+      `;
+
+      exec(`osascript -e '${script}'`, { timeout: 200 }, (error, stdout) => {
+        if (error) {
+          return; // 出错时保持上次状态
+        }
+
+        const result = stdout.trim();
         const oldSelectedFile = this.cachedSelectedFile;
-        if (fileStatus === 'no_selection' || fileStatus === 'not_in_finder' || fileStatus === 'selection_error') {
+        
+        if (result === 'no_selection' || result === 'selection_error') {
           this.cachedSelectedFile = null;
         } else {
-          this.cachedSelectedFile = fileStatus;
+          this.cachedSelectedFile = result;
         }
         
-        this.lastStateUpdate = now;
-        
-        // 只在状态真正变化时输出日志和动态管理空格键
-        if (wasFinderActive !== this.cachedFinderActive || oldSelectedFile !== this.cachedSelectedFile) {
-          console.log(`📊 状态更新: Finder=${this.cachedFinderActive}, 文件=${this.cachedSelectedFile || '无'}`);
+        // 只在文件选择状态真正变化时更新快捷键
+        if (oldSelectedFile !== this.cachedSelectedFile) {
+          console.log(`📁 文件选择变化: ${this.cachedSelectedFile || '无'}`);
           
           // 💡 动态管理空格键注册
           this.manageSpaceKeyRegistration();
@@ -373,6 +405,27 @@ class FinderEnhanceApp {
       });
     } catch (error) {
       // 静默处理错误
+    }
+  }
+
+  // 💡 启动文件监控（高频）
+  startFileMonitoring() {
+    if (this.fileMonitorTimer) {
+      return; // 已经在运行
+    }
+    
+    console.log('🚀 启动高频文件监控 (200ms)');
+    this.fileMonitorTimer = setInterval(() => {
+      this.checkFileSelection();
+    }, this.fileCheckInterval);
+  }
+
+  // 💡 停止文件监控
+  stopFileMonitoring() {
+    if (this.fileMonitorTimer) {
+      clearInterval(this.fileMonitorTimer);
+      this.fileMonitorTimer = null;
+      console.log('🛑 停止高频文件监控');
     }
   }
 
@@ -933,6 +986,7 @@ class FinderEnhanceApp {
         }
       });
 
+
       // 简化和增强DOM加载处理
       let domReady = false;
       let loadTimeout = null;
@@ -1424,7 +1478,7 @@ class FinderEnhanceApp {
     dialog.showMessageBox({
       type: 'info',
       title: '关于 Finder增强工具',
-      message: 'Finder增强工具 v1.0.0',
+      message: 'Finder增强工具 v3.0.3',
       detail: '一个用于增强Mac Finder功能的实用工具。\n\n功能特性:\n• 空格键快速预览文件夹和压缩包内容\n• Cmd+X快捷键剪切文件夹\n• 系统托盘常驻运行'
     });
   }
@@ -1460,10 +1514,16 @@ class FinderEnhanceApp {
 
   // 💡 清理监控定时器
   stopOptimizedMonitor() {
-    if (this.monitorTimer) {
-      clearInterval(this.monitorTimer);
-      this.monitorTimer = null;
-      console.log('🛑 停止优化状态监控');
+    if (this.finderMonitorTimer) {
+      clearInterval(this.finderMonitorTimer);
+      this.finderMonitorTimer = null;
+      console.log('🛑 停止Finder状态监控');
+    }
+    
+    if (this.fileMonitorTimer) {
+      clearInterval(this.fileMonitorTimer);
+      this.fileMonitorTimer = null;
+      console.log('🛑 停止文件选择监控');
     }
   }
 
@@ -1620,6 +1680,7 @@ class FinderEnhanceApp {
       });
     });
   }
+
 }
 
 // 应用初始化
